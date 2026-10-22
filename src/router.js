@@ -22,6 +22,11 @@ const routes = [
         component: () => import('./views/OverviewView.vue')
       },
       {
+        path: 'contenus',
+        name: 'content',
+        component: () => import('./views/ContentView.vue')
+      },
+      {
         path: 'defis',
         name: 'challenges',
         component: () => import('./views/ChallengesView.vue')
@@ -36,8 +41,6 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  // Vérification fraîche de la session et du rôle.
-  // Toute erreur doit conduire à un refus d'accès.
   try {
     await refreshSession()
   } catch {
