@@ -1,4 +1,5 @@
 <script setup>
+import AdminSvgIcon from '../components/AdminSvgIcon.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { supabase } from '../supabase'
 
@@ -491,7 +492,7 @@ onMounted(reloadAll)
     <div class="content-tabs">
       <button v-for="(d, key) in definitions" :key="key"
         :class="{ on: section === key }" @click="section = key">
-        <span>{{ { subjects: '▦', chapters: '▤', capsules: '◈', cards: '▧' }[key] }}</span>
+        <span>{{ { subjects: 'layers', chapters: 'book-open', capsules: 'book-open', cards: 'target' }[key] }}</span>
         {{ d.label }}
         <small>{{ { subjects: subjects.length, chapters: chapters.length, capsules: capsules.length, cards: cards.length }[key] }}</small>
       </button>
@@ -510,7 +511,7 @@ onMounted(reloadAll)
         <span>Matière</span>
         <select v-model="subjectId" :disabled="!subjects.length">
           <option value="">Choisir une matière</option>
-          <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.emoji || '📘' }} {{ s.name }}</option>
+          <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
       </label>
 
@@ -552,7 +553,7 @@ onMounted(reloadAll)
           class="content-item" :class="{ selected: selectedId === item.id }"
           @click="startEdit(item)">
           <span class="content-item-icon">
-            {{ section === 'subjects' ? (item.emoji || '📘') : section === 'chapters' ? '▤' : section === 'capsules' ? '◈' : '▧' }}
+            <AdminSvgIcon :name="section === 'subjects' ? 'layers' : section === 'chapters' ? 'book-open' : section === 'capsules' ? 'book-open' : 'target'" :size="18" />
           </span>
           <span class="content-item-main">
             <strong>{{ currentLabel(item) }}</strong>

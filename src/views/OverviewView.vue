@@ -1,4 +1,5 @@
 <script setup>
+import AdminSvgIcon from '../components/AdminSvgIcon.vue'
 import { ref, onMounted } from 'vue'
 import { supabase } from '../supabase'
 
@@ -54,7 +55,7 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1>📊 Vue d’ensemble</h1>
+    <h1><AdminSvgIcon name="chart-column" :size="26" /> Vue d’ensemble</h1>
     <p class="lead">L’état de l’application en un coup d’œil.</p>
 
     <p v-if="loading">Chargement…</p>

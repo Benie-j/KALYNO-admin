@@ -1,4 +1,5 @@
 <script setup>
+import AdminSvgIcon from '../components/AdminSvgIcon.vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { auth, refreshSession } from '../auth'
@@ -52,13 +53,13 @@ async function logout() {
       <div class="nav-label">ESPACE DE TRAVAIL</div>
       <nav class="admin-nav">
         <router-link :to="{ name: 'overview' }" @click="menuOpen = false">
-          <span class="nav-icon">◫</span> Vue d’ensemble
+          <span class="nav-icon"><AdminSvgIcon name="layout-dashboard" :size="18" /></span> Vue d’ensemble
         </router-link>
         <router-link :to="{ name: 'content' }" @click="menuOpen = false">
-          <span class="nav-icon">▦</span> Contenus pédagogiques
+          <span class="nav-icon"><AdminSvgIcon name="layers" :size="18" /></span> Contenus pédagogiques
         </router-link>
         <router-link :to="{ name: 'challenges' }" @click="menuOpen = false">
-          <span class="nav-icon">◎</span> Défis et questions
+          <span class="nav-icon"><AdminSvgIcon name="target" :size="18" /></span> Défis et questions
         </router-link>
       </nav>
 
@@ -79,7 +80,7 @@ async function logout() {
         </div>
         <p v-if="error" class="msg err">{{ error }}</p>
         <button class="logout-button" :disabled="signingOut" @click="logout">
-          ↪ {{ signingOut ? 'Déconnexion…' : 'Se déconnecter' }}
+          <AdminSvgIcon name="log-out" :size="18" /> {{ signingOut ? "Déconnexion…" : "Se déconnecter" }}
         </button>
       </div>
     </aside>
@@ -88,7 +89,7 @@ async function logout() {
 
     <main class="admin-main">
       <header class="topbar">
-        <button class="mobile-menu-button" aria-label="Ouvrir le menu" @click="menuOpen = !menuOpen">☰</button>
+        <button class="mobile-menu-button" aria-label="Ouvrir le menu" @click="menuOpen = !menuOpen"><AdminSvgIcon name="menu" :size="22" /></button>
         <div class="topbar-context">
           <span>Administration</span>
           <span class="topbar-separator">/</span>
