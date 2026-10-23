@@ -10,4 +10,14 @@ async function start() {
   createApp(App).use(router).mount('#app')
 }
 
-start()
+// Anti-clickjacking : le site refuse de s'afficher dans la page d'un autre site
+if (window.top !== window.self) {
+  document.documentElement.style.display = 'none'
+  try {
+    window.top.location = window.self.location
+  } catch (e) {
+    // navigation bloquée : la page reste masquée
+  }
+} else {
+  start()
+}
