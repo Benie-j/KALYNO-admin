@@ -3,7 +3,7 @@ import {
   Bold, Italic, Underline, List, ListOrdered, Heading2, Superscript, Subscript,
   Quote, Eraser, Sigma, Palette, X, Save
 } from "lucide-react";
-import { ColorPanel, MathKeyboard } from "./FormatKit";
+import { ColorPanel, MathKeyboard, PH } from "./FormatKit";
 
 export type CapsuleEditorDraft = {
   title: string;
@@ -42,6 +42,8 @@ function cleanHtml(html: string): string {
     for (const attr of Array.from(node.attributes)) {
       if (attr.name.toLowerCase().startsWith("on")) {
         node.removeAttribute(attr.name);
+      } else if (attr.name === "class") {
+        if (!/^(frac|fn|fd)$/.test(attr.value)) node.removeAttribute("class");
       } else if (attr.name === "style") {
         const safe = rgbToHex(attr.value).split(";").map(part => part.trim())
           .filter(part => /^(color|background-color)\s*:\s*#[0-9a-f]{3,8}$/i.test(part))
@@ -58,10 +60,37 @@ function cleanHtml(html: string): string {
     }
   });
 
-  return doc.body.innerHTML;
+  return doc.body.innerHTML.replace(new RegExp(PH, "g"), "");
 }
 
-type SelectionWithModify = Selection & { modify: (alter: string, direction: string, granularity: string) => void };
+function selectChar(node: Node, index: number) {
+  const range = document.createRange();
+  range.setStart(node, index);
+  range.setEnd(node, index + 1);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function findPlaceholder(root: Node, after: Node | null, afterOffset: number): { node: Node; index: number } | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let passed = after === null;
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const text = node.textContent ?? "";
+    if (!passed) {
+      if (node === after) {
+        passed = true;
+        const idx = text.indexOf(PH, afterOffset);
+        if (idx >= 0) return { node, index: idx };
+      }
+      continue;
+    }
+    const idx = text.indexOf(PH);
+    if (idx >= 0) return { node, index: idx };
+  }
+  return null;
+}
 
 export default function CapsuleEditor({
   initial, editing, saving, onCancel, onSave
@@ -90,12 +119,49 @@ export default function CapsuleEditor({
     document.execCommand("styleWithCSS", false, "false");
   }
 
-  function insert(text: string, back: number) {
-    editorRef.current?.focus();
-    document.execCommand("insertText", false, text);
-    const selection = window.getSelection() as SelectionWithModify | null;
-    if (selection && typeof selection.modify === "function") {
-      for (let n = 0; n < back; n++) selection.modify("move", "backward", "character");
+  function insertHtml(html: string) {
+    const root = editorRef.current;
+    if (!root) return;
+    root.focus();
+    if (!html.includes("<") && !html.includes(PH)) {
+      document.execCommand("insertHTML", false, html);
+      return;
+    }
+    document.execCommand("insertHTML", false, `<span data-new="1">${html}</span>&nbsp;`);
+    const wrapper = root.querySelector('[data-new="1"]');
+    if (!wrapper) return;
+    wrapper.removeAttribute("data-new");
+    const found = findPlaceholder(wrapper, null, 0);
+    if (found) selectChar(found.node, found.index);
+  }
+
+  // Tab : champ suivant de la formule, ou sortie de la fraction / de l'exposant / de l'indice.
+  function onEditorKey(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Tab" || event.shiftKey) return;
+    const root = editorRef.current;
+    const selection = window.getSelection();
+    if (!root || !selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    const anchor = range.endContainer.nodeType === Node.TEXT_NODE ? range.endContainer : null;
+    const found = findPlaceholder(root, anchor, range.endOffset);
+    if (found) {
+      event.preventDefault();
+      selectChar(found.node, found.index);
+      return;
+    }
+    let el: Node | null = range.endContainer;
+    let top: Element | null = null;
+    while (el && el !== root) {
+      if (el instanceof Element && el.matches("sup,sub,.frac")) top = el;
+      el = el.parentNode;
+    }
+    if (top) {
+      event.preventDefault();
+      const next = document.createRange();
+      next.setStartAfter(top);
+      next.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(next);
     }
   }
 
@@ -189,7 +255,7 @@ export default function CapsuleEditor({
             {tool("Palette de couleurs", <Palette size={17}/>, () => setPanel(p => (p === "color" ? null : "color")), panel === "color")}
           </div>
 
-          {panel === "math" && <MathKeyboard onInsert={insert}/>}
+          {panel === "math" && <MathKeyboard onInsert={insertHtml}/>}
           {panel === "color" && (
             <ColorPanel onText={c => paint("foreColor", c)} onBack={c => paint("hiliteColor", c)}/>
           )}
@@ -202,10 +268,11 @@ export default function CapsuleEditor({
             role="textbox"
             aria-label="Contenu de la leçon"
             aria-multiline="true"
+            onKeyDown={onEditorKey}
             data-placeholder="Écris ici l'explication, la règle, les exemples ou les formules…"
           />
           <p className="editor-help">
-            Sélectionne un passage avant d'appliquer une couleur ou un format.
+            Sélectionne un passage avant d'appliquer une couleur ou un format. Les ▢ sont les champs à remplir.
           </p>
         </section>
 
