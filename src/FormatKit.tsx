@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { renderToString } from "katex";
+import katex from "katex";
 import "katex/dist/katex.min.css";
 
 export const PH = "▢";
@@ -302,7 +302,7 @@ function label(tex: string): string {
     html = `<span class="kit-raw">${tex.split(PH).join("…").replace(/&/g, "&amp;").replace(/</g, "&lt;")}</span>`;
   } else {
     try {
-      html = renderToString(tex.split(PH).join("\\square "), { throwOnError: false, output: "html" });
+      html = katex.renderToString(tex.split(PH).join("\\square "), { throwOnError: false, output: "html" });
     } catch {
       html = tex.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     }

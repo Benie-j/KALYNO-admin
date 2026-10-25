@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { renderToString } from "katex";
+import katex from "katex";
 import {
   Bold, Italic, Underline, List, ListOrdered, Heading2, Superscript, Subscript,
   Quote, Eraser, Sigma, Palette, X, Save
@@ -75,7 +75,7 @@ function renderPreview(html: string): string {
   return cleanHtml(html).replace(/\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g,
     (match: string, block?: string, inline?: string) => {
       try {
-        return renderToString(plainText(block ?? inline ?? ""), {
+        return katex.renderToString(plainText(block ?? inline ?? ""), {
           displayMode: block !== undefined,
           throwOnError: false
         });
