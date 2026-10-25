@@ -8,8 +8,9 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
+import LevelsManager from "./LevelsManager";
 
-type Level = { id: string; label: string; position: number; is_active: boolean };
+type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
 type Subject = { id: string; level_id: string; name: string; emoji: string | null; coefficient: number; position: number; is_active: boolean };
 type Chapter = { id: string; subject_id: string; title: string; position: number; status: "draft" | "published"; tag?: string | null };
 type Capsule = { id: string; chapter_id: string; title: string; body: string; minutes: number; position: number; kind: string; is_high_yield: boolean };
@@ -18,7 +19,7 @@ type Banner = { id: string; title: string; subtitle: string | null; button_label
 type Challenge = { id: string; level_id: string; title: string; position: number; status: "draft" | "published"; kind: "discovery" | "standard" };
 type Question = { id: string; challenge_id: string; position: number; prompt: string; choices: string[]; correct_index: number; explanation: string | null };
 
-type Section = "overview" | "courses" | "banners" | "dojo";
+type Section = "overview" | "levels" | "courses" | "banners" | "dojo";
 const KIND_LABEL: Record<string, string> = { intro: "Introduction", text: "Texte", rule: "Règle / formule", tip: "Astuce", pitfall: "Piège à éviter" };
 
 function errorText(error: unknown) {
@@ -62,7 +63,7 @@ export default function App() {
   const currentChallenge = challenges.find(x => x.id === challengeId);
 
   const loadLevels = useCallback(async () => {
-    const { data, error } = await supabase.from("levels").select("id,label,position,is_active").order("position");
+    const { data, error } = await supabase.from("levels").select("id,label,position,is_active,cycle,icon_key,tagline").order("position");
     if (error) throw error;
     const rows = (data ?? []) as Level[];
     setLevels(rows);
@@ -495,6 +496,7 @@ export default function App() {
 
   const nav = [
     { id: "overview" as Section, label: "Vue générale", icon: LayoutDashboard },
+    { id: "levels" as Section, label: "Classes & séries", icon: GraduationCap },
     { id: "courses" as Section, label: "Cours & leçons", icon: BookOpen },
     { id: "banners" as Section, label: "Explorer · À la une", icon: Sparkles },
     { id: "dojo" as Section, label: "Dojo · Défis", icon: Target }
@@ -544,6 +546,11 @@ export default function App() {
               <button className="quick-card" onClick={()=>setSection("dojo")}><div className="quick-icon green"><Target/></div><strong>Préparer un défi</strong><span>Créer les questions QCM du Dojo</span><b>Ouvrir <span>→</span></b></button>
             </div>
             <div className="info-banner"><div className="info-symbol"><Cloud size={21}/></div><div><strong>Une seule source de vérité</strong><p>Les cours et défis publiés ici sont lus par l’application Android via les politiques RLS de Supabase. Les brouillons restent réservés à l’administration.</p></div><ShieldCheck className="info-check" size={22}/></div>
+          </section>}
+
+          {section === "levels" && <section className="page">
+            <div className="page-intro"><div><div className="eyebrow">CATALOGUE OFFICIEL</div><h2>Classes et séries</h2><p>La liste active publiée ici est celle que l’application Android récupère depuis Supabase. Les identifiants sont conservés pour protéger les relations avec les contenus.</p></div><button className="secondary" onClick={()=>void reloadAll()}><RefreshCw size={16}/> Actualiser</button></div>
+            <LevelsManager levels={levels} busy={busy} onRefresh={reloadAll} onNotice={setNotice}/>
           </section>}
 
           {section === "courses" && <section className="page">
