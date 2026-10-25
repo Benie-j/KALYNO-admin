@@ -7,6 +7,7 @@ import {
   X
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
 
 type Level = { id: string; label: string; position: number; is_active: boolean };
 type Subject = { id: string; level_id: string; name: string; emoji: string | null; coefficient: number; position: number; is_active: boolean };
@@ -53,6 +54,7 @@ export default function App() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [searchText, setSearchText] = useState("");
   const [counts, setCounts] = useState({ subjects: 0, chapters: 0, capsules: 0, cards: 0, challenges: 0, students: 0 });
+  const [capsuleEditor, setCapsuleEditor] = useState<{ capsule: Capsule | null } | null>(null);
 
   const currentLevel = levels.find(x => x.id === levelId);
   const currentSubject = subjects.find(x => x.id === subjectId);
@@ -254,26 +256,50 @@ export default function App() {
       if (error) throw error; setChapterId(""); await loadChapters(subjectId);
     }, "Chapitre supprimé.");
   }
-  async function createCapsule() {
+  function createCapsule() {
     if (!chapterId) return;
-    const title = ask("Titre du bloc pédagogique"); if (!title) return;
-    const body = ask("Contenu du bloc (texte, formules en texte brut ou LaTeX)", ""); if (body === null) return;
-    const kind = ask("Type : intro, text, rule, tip ou pitfall", "text"); if (!kind || !["intro","text","rule","tip","pitfall"].includes(kind)) { tell("Type de bloc invalide."); return; }
-    const minutes = Number(ask("Durée estimée en minutes (1 à 10)", "3") ?? "3");
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10) { tell("La durée doit être comprise entre 1 et 10 minutes."); return; }
-    await runAction(async () => {
-      const { error } = await supabase.from("capsules").insert({ chapter_id: chapterId, title, body, kind, minutes, position: capsules.length });
-      if (error) throw error; await loadLesson(chapterId);
-    }, "Bloc pédagogique créé.");
+    setCapsuleEditor({ capsule: null });
   }
-  async function editCapsule(capsule: Capsule) {
-    const title = ask("Titre du bloc", capsule.title); if (!title) return;
-    const body = ask("Contenu du bloc", capsule.body); if (body === null) return;
-    const kind = ask("Type : intro, text, rule, tip ou pitfall", capsule.kind); if (!kind || !["intro","text","rule","tip","pitfall"].includes(kind)) { tell("Type de bloc invalide."); return; }
-    await runAction(async () => {
-      const { error } = await supabase.from("capsules").update({ title, body, kind }).eq("id", capsule.id);
-      if (error) throw error; await loadLesson(chapterId);
-    }, "Bloc mis à jour.");
+
+  function editCapsule(capsule: Capsule) {
+    setCapsuleEditor({ capsule });
+  }
+
+  async function saveCapsule(draft: CapsuleEditorDraft) {
+    if (!chapterId) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      if (capsuleEditor?.capsule) {
+        const { error } = await supabase.from("capsules").update({
+          title: draft.title,
+          body: draft.body,
+          kind: draft.kind,
+          minutes: draft.minutes,
+          is_high_yield: draft.is_high_yield
+        }).eq("id", capsuleEditor.capsule.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("capsules").insert({
+          chapter_id: chapterId,
+          title: draft.title,
+          body: draft.body,
+          kind: draft.kind,
+          minutes: draft.minutes,
+          is_high_yield: draft.is_high_yield,
+          position: capsules.length
+        });
+        if (error) throw error;
+      }
+      await loadLesson(chapterId);
+      await refreshCounts();
+      setCapsuleEditor(null);
+      setNotice(capsuleEditor?.capsule ? "Bloc pédagogique mis à jour." : "Bloc pédagogique créé.");
+    } catch (e) {
+      setNotice(`Échec de l’enregistrement : ${errorText(e)}`);
+    } finally {
+      setBusy(false);
+    }
   }
   async function deleteCapsule(capsule: Capsule) {
     if (!confirm(`Supprimer le bloc « ${capsule.title} » ? Les cartes associées seront conservées sans bloc.`)) return;
@@ -562,6 +588,28 @@ export default function App() {
               <div className="panel"><div className="panel-heading"><div><h3>{currentChallenge?.title??"Questions du défi"}</h3><p>{questions.length} question(s) · 4 choix par question</p></div><button className="small-primary" onClick={()=>void createQuestion()} disabled={!challengeId}><Plus size={15}/> Question</button></div>{!challengeId?<Empty text="Choisis un défi pour gérer ses questions."/>:questions.length===0?<Empty text="Ce défi n’a pas encore de question."/>:<div className="question-list">{questions.map((q,i)=><article key={q.id} className="question-card"><div className="question-number">{String(i+1).padStart(2,"0")}</div><div className="question-main"><strong>{q.prompt}</strong><div className="choice-list">{q.choices.map((choice,j)=><span className={j===q.correct_index?"correct-choice":""} key={j}>{String.fromCharCode(65+j)}. {choice}{j===q.correct_index&&<Check size={13}/>}</span>)}</div>{q.explanation&&<p>{q.explanation}</p>}</div><div className="row-actions"><button onClick={()=>void editQuestion(q)} title="Modifier">✎</button><button onClick={()=>void deleteQuestion(q)} title="Supprimer"><Trash2 size={14}/></button></div></article>)}</div>}</div></div>
           </section>}
         </div>
+        {capsuleEditor && (
+          <CapsuleEditor
+            key={capsuleEditor.capsule?.id ?? "new-capsule"}
+            editing={Boolean(capsuleEditor.capsule)}
+            saving={busy}
+            initial={capsuleEditor.capsule ? {
+              title: capsuleEditor.capsule.title,
+              body: capsuleEditor.capsule.body,
+              kind: capsuleEditor.capsule.kind,
+              minutes: capsuleEditor.capsule.minutes,
+              is_high_yield: capsuleEditor.capsule.is_high_yield
+            } : {
+              title: "",
+              body: "",
+              kind: "text",
+              minutes: 3,
+              is_high_yield: false
+            }}
+            onCancel={() => setCapsuleEditor(null)}
+            onSave={draft => void saveCapsule(draft)}
+          />
+        )}
         <footer className="main-footer"><span>© KALYNO · Administration pédagogique</span><span><span className="online-dot"/> Backend Supabase · RLS actif</span></footer>
       </main>
     </div>
