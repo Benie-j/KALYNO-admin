@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import katex from "katex";
 import {
-  Bold, Italic, Underline, List, ListOrdered, Heading2, Superscript, Subscript,
-  Quote, Eraser, Sigma, Palette, X, Save
+  Bold, Italic, Underline, Strikethrough, List, ListOrdered, Heading2, Superscript, Subscript,
+  Quote, Eraser, Sigma, Palette, Square, X, Save
 } from "lucide-react";
 import { ColorPanel, MathKeyboard, PH } from "./FormatKit";
 
@@ -31,7 +31,7 @@ function rgbToHex(value: string): string {
 function cleanHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const allowed = new Set([
-    "P", "BR", "STRONG", "B", "EM", "I", "U",
+    "P", "DIV", "BR", "STRONG", "B", "EM", "I", "U", "S", "STRIKE", "DEL",
     "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE",
     "SPAN", "MARK", "SUB", "SUP"
   ]);
@@ -47,7 +47,10 @@ function cleanHtml(html: string): string {
         if (!/^(frac|fn|fd)$/.test(attr.value)) node.removeAttribute("class");
       } else if (attr.name === "style") {
         const safe = rgbToHex(attr.value).split(";").map(part => part.trim())
-          .filter(part => /^(color|background-color)\s*:\s*#[0-9a-f]{3,8}$/i.test(part))
+          .filter(part => /^(color|background-color)\s*:\s*#[0-9a-f]{3,6}$/i.test(part)
+            || /^border\s*:\s*\d+px\s+solid\s+#[0-9a-f]{3,6}$/i.test(part)
+            || /^padding\s*:\s*\d+px$/i.test(part)
+            || /^border-radius\s*:\s*\d+px$/i.test(part))
           .join("; ");
         if (safe) node.setAttribute("style", safe);
         else node.removeAttribute("style");
@@ -149,6 +152,32 @@ export default function CapsuleEditor({
     document.execCommand("styleWithCSS", false, "true");
     document.execCommand(command, false, color);
     document.execCommand("styleWithCSS", false, "false");
+  }
+
+  function toggleStrike() {
+    editorRef.current?.focus();
+    document.execCommand("strikeThrough", false);
+    setTick(n => n + 1);
+  }
+
+  function insertBox() {
+    const root = editorRef.current;
+    if (!root) return;
+    root.focus();
+    document.execCommand("formatBlock", false, "div");
+    const selection = window.getSelection();
+    const node = selection?.anchorNode;
+    const element = node?.nodeType === Node.ELEMENT_NODE
+      ? node as HTMLElement
+      : node?.parentElement ?? null;
+    const block = element?.closest<HTMLElement>("div:not(.rich-editor)");
+    if (block && root.contains(block)) {
+      block.style.border = "1px solid #2457c5";
+      block.style.backgroundColor = "#eef3ff";
+      block.style.padding = "8px";
+      block.style.borderRadius = "8px";
+    }
+    setTick(n => n + 1);
   }
 
   function rememberSelection() {
@@ -301,6 +330,8 @@ export default function CapsuleEditor({
             {tool("Gras", <Bold size={17}/>, () => format("bold"))}
             {tool("Italique", <Italic size={17}/>, () => format("italic"))}
             {tool("Souligné", <Underline size={17}/>, () => format("underline"))}
+            {tool("Barré", <Strikethrough size={17}/>, toggleStrike)}
+            {tool("Encadré coloré", <Square size={17}/>, insertBox)}
             {tool("Exposant", <Superscript size={17}/>, () => format("superscript"))}
             {tool("Indice", <Subscript size={17}/>, () => format("subscript"))}
             <span className="editor-toolbar-divider"/>
