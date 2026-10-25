@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
-import ToolsDock from "./tools/ToolsDock";
 
 type Level = { id: string; label: string; position: number; is_active: boolean };
 type Subject = { id: string; level_id: string; name: string; emoji: string | null; coefficient: number; position: number; is_active: boolean };
@@ -611,7 +610,6 @@ export default function App() {
             onSave={draft => void saveCapsule(draft)}
           />
         )}
-        <ToolsDock />
         <footer className="main-footer"><span>© KALYNO · Administration pédagogique</span><span><span className="online-dot"/> Backend Supabase · RLS actif</span></footer>
       </main>
     </div>

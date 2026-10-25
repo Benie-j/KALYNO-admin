@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Bold, Italic, Underline, List, ListOrdered, Heading2,
-  Highlighter, Palette, X, Save
+  Bold, Italic, Underline, List, ListOrdered, Heading2, Superscript, Subscript,
+  Quote, Eraser, Sigma, Palette, X, Save
 } from "lucide-react";
+import { ColorPanel, MathKeyboard } from "./FormatKit";
 
 export type CapsuleEditorDraft = {
   title: string;
@@ -20,10 +21,11 @@ type Props = {
   onSave: (draft: CapsuleEditorDraft) => void;
 };
 
-const COLORS = [
-  "#202B45", "#2457C5", "#4778D8", "#15966A",
-  "#8457D9", "#D9485F", "#B7791F", "#FFFFFF"
-];
+function rgbToHex(value: string): string {
+  return value.replace(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*[\d.]+)?\s*\)/gi,
+    (_m, r: string, g: string, b: string) =>
+      "#" + [r, g, b].map(n => Math.min(255, Number(n)).toString(16).padStart(2, "0")).join(""));
+}
 
 function cleanHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -41,7 +43,7 @@ function cleanHtml(html: string): string {
       if (attr.name.toLowerCase().startsWith("on")) {
         node.removeAttribute(attr.name);
       } else if (attr.name === "style") {
-        const safe = attr.value.split(";").map(part => part.trim())
+        const safe = rgbToHex(attr.value).split(";").map(part => part.trim())
           .filter(part => /^(color|background-color)\s*:\s*#[0-9a-f]{3,8}$/i.test(part))
           .join("; ");
         if (safe) node.setAttribute("style", safe);
@@ -59,6 +61,8 @@ function cleanHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
+type SelectionWithModify = Selection & { modify: (alter: string, direction: string, granularity: string) => void };
+
 export default function CapsuleEditor({
   initial, editing, saving, onCancel, onSave
 }: Props) {
@@ -67,6 +71,7 @@ export default function CapsuleEditor({
   const [kind, setKind] = useState(initial.kind);
   const [minutes, setMinutes] = useState(initial.minutes);
   const [priority, setPriority] = useState(initial.is_high_yield);
+  const [panel, setPanel] = useState<"math" | "color" | null>(null);
 
   useEffect(() => {
     if (editorRef.current) editorRef.current.innerHTML = initial.body;
@@ -75,6 +80,23 @@ export default function CapsuleEditor({
   function format(command: string, value?: string) {
     editorRef.current?.focus();
     document.execCommand(command, false, value);
+  }
+
+  // Les couleurs passent par des styles CSS (sinon le navigateur crée des balises <font> perdues à l'enregistrement).
+  function paint(command: "foreColor" | "hiliteColor", color: string) {
+    editorRef.current?.focus();
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand(command, false, color);
+    document.execCommand("styleWithCSS", false, "false");
+  }
+
+  function insert(text: string, back: number) {
+    editorRef.current?.focus();
+    document.execCommand("insertText", false, text);
+    const selection = window.getSelection() as SelectionWithModify | null;
+    if (selection && typeof selection.modify === "function") {
+      for (let n = 0; n < back; n++) selection.modify("move", "backward", "character");
+    }
   }
 
   function submit(event: React.FormEvent) {
@@ -89,14 +111,13 @@ export default function CapsuleEditor({
       window.alert("Le contenu pédagogique est obligatoire.");
       return;
     }
-    onSave({
-      title: cleanTitle,
-      body,
-      kind,
-      minutes,
-      is_high_yield: priority
-    });
+    onSave({ title: cleanTitle, body, kind, minutes, is_high_yield: priority });
   }
+
+  const tool = (label: string, icon: React.ReactNode, action: () => void, on = false) => (
+    <button type="button" title={label} aria-label={label} className={on ? "on" : ""}
+      onMouseDown={e => e.preventDefault()} onClick={action}>{icon}</button>
+  );
 
   return (
     <div className="editor-overlay" role="presentation">
@@ -148,48 +169,30 @@ export default function CapsuleEditor({
         <section className="rich-editor-section">
           <div className="rich-editor-label">
             <strong>Contenu de la leçon</strong>
-            <span>Formatage et couleurs</span>
+            <span>Formatage, formules et couleurs</span>
           </div>
 
           <div className="editor-toolbar">
-            <button type="button" title="Gras" onClick={() => format("bold")}>
-              <Bold size={17}/>
-            </button>
-            <button type="button" title="Italique" onClick={() => format("italic")}>
-              <Italic size={17}/>
-            </button>
-            <button type="button" title="Souligné" onClick={() => format("underline")}>
-              <Underline size={17}/>
-            </button>
-            <button type="button" title="Titre" onClick={() => format("formatBlock", "h2")}>
-              <Heading2 size={17}/>
-            </button>
-            <button type="button" title="Liste à puces" onClick={() => format("insertUnorderedList")}>
-              <List size={17}/>
-            </button>
-            <button type="button" title="Liste numérotée" onClick={() => format("insertOrderedList")}>
-              <ListOrdered size={17}/>
-            </button>
+            {tool("Gras", <Bold size={17}/>, () => format("bold"))}
+            {tool("Italique", <Italic size={17}/>, () => format("italic"))}
+            {tool("Souligné", <Underline size={17}/>, () => format("underline"))}
+            {tool("Exposant", <Superscript size={17}/>, () => format("superscript"))}
+            {tool("Indice", <Subscript size={17}/>, () => format("subscript"))}
             <span className="editor-toolbar-divider"/>
-            <span className="palette-caption"><Palette size={15}/> Texte</span>
-            {COLORS.map(color => (
-              <button key={color} type="button"
-                className={`color-swatch ${color === "#FFFFFF" ? "swatch-white" : ""}`}
-                title={`Couleur ${color}`}
-                style={{ backgroundColor: color }}
-                onMouseDown={e => e.preventDefault()}
-                onClick={() => format("foreColor", color)}/>
-            ))}
-            <span className="palette-caption"><Highlighter size={15}/> Fond</span>
-            {["#FFF0B3", "#DDF7E8", "#E4ECFF", "#F0E5FF"].map(color => (
-              <button key={color} type="button"
-                className="color-swatch"
-                title={`Surlignage ${color}`}
-                style={{ backgroundColor: color }}
-                onMouseDown={e => e.preventDefault()}
-                onClick={() => format("hiliteColor", color)}/>
-            ))}
+            {tool("Titre", <Heading2 size={17}/>, () => format("formatBlock", "h2"))}
+            {tool("Citation", <Quote size={17}/>, () => format("formatBlock", "blockquote"))}
+            {tool("Liste à puces", <List size={17}/>, () => format("insertUnorderedList"))}
+            {tool("Liste numérotée", <ListOrdered size={17}/>, () => format("insertOrderedList"))}
+            {tool("Effacer la mise en forme", <Eraser size={17}/>, () => format("removeFormat"))}
+            <span className="editor-toolbar-divider"/>
+            {tool("Clavier scientifique", <Sigma size={17}/>, () => setPanel(p => (p === "math" ? null : "math")), panel === "math")}
+            {tool("Palette de couleurs", <Palette size={17}/>, () => setPanel(p => (p === "color" ? null : "color")), panel === "color")}
           </div>
+
+          {panel === "math" && <MathKeyboard onInsert={insert}/>}
+          {panel === "color" && (
+            <ColorPanel onText={c => paint("foreColor", c)} onBack={c => paint("hiliteColor", c)}/>
+          )}
 
           <div
             ref={editorRef}
