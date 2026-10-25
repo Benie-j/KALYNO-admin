@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { renderToString } from "katex";
 import {
   Bold, Italic, Underline, List, ListOrdered, Heading2, Superscript, Subscript,
   Quote, Eraser, Sigma, Palette, X, Save
@@ -63,6 +64,27 @@ function cleanHtml(html: string): string {
   return doc.body.innerHTML.replace(new RegExp(PH, "g"), "");
 }
 
+function plainText(html: string): string {
+  const box = document.createElement("textarea");
+  box.innerHTML = html.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]*>/g, "");
+  return box.value;
+}
+
+// Aperçu élève : le texte nettoyé, avec chaque $...$ / $$...$$ rendu par KaTeX.
+function renderPreview(html: string): string {
+  return cleanHtml(html).replace(/\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g,
+    (match: string, block?: string, inline?: string) => {
+      try {
+        return renderToString(plainText(block ?? inline ?? ""), {
+          displayMode: block !== undefined,
+          throwOnError: false
+        });
+      } catch {
+        return match;
+      }
+    });
+}
+
 function selectChar(node: Node, index: number) {
   const range = document.createRange();
   range.setStart(node, index);
@@ -96,15 +118,25 @@ export default function CapsuleEditor({
   initial, editing, saving, onCancel, onSave
 }: Props) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const savedRange = useRef<Range | null>(null);
   const [title, setTitle] = useState(initial.title);
   const [kind, setKind] = useState(initial.kind);
   const [minutes, setMinutes] = useState(initial.minutes);
   const [priority, setPriority] = useState(initial.is_high_yield);
-  const [panel, setPanel] = useState<"math" | "color" | null>(null);
+  const [panel, setPanel] = useState<"math" | "color" | null>("math");
+  const [tick, setTick] = useState(0);
+  const [preview, setPreview] = useState("");
 
   useEffect(() => {
     if (editorRef.current) editorRef.current.innerHTML = initial.body;
   }, [initial.body]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPreview(renderPreview(editorRef.current?.innerHTML ?? ""));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [tick, initial.body]);
 
   function format(command: string, value?: string) {
     editorRef.current?.focus();
@@ -119,23 +151,50 @@ export default function CapsuleEditor({
     document.execCommand("styleWithCSS", false, "false");
   }
 
-  function insertHtml(html: string) {
+  function rememberSelection() {
+    const root = editorRef.current;
+    const selection = window.getSelection();
+    if (root && selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      if (root.contains(range.commonAncestorContainer)) savedRange.current = range.cloneRange();
+    }
+  }
+
+  // Vrai si le curseur est à l'intérieur d'un $...$ (nombre impair de $ avant lui).
+  function insideMath(): boolean {
+    const root = editorRef.current;
+    const selection = window.getSelection();
+    if (!root || !selection || selection.rangeCount === 0) return false;
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.startContainer)) return false;
+    const before = document.createRange();
+    before.selectNodeContents(root);
+    before.setEnd(range.startContainer, range.startOffset);
+    return ((before.toString().match(/\$/g) ?? []).length % 2) === 1;
+  }
+
+  function insertTex(tex: string) {
     const root = editorRef.current;
     if (!root) return;
     root.focus();
-    if (!html.includes("<") && !html.includes(PH)) {
-      document.execCommand("insertHTML", false, html);
-      return;
+    const selection = window.getSelection();
+    if (selection && savedRange.current && !root.contains(selection.anchorNode)) {
+      selection.removeAllRanges();
+      selection.addRange(savedRange.current);
     }
-    document.execCommand("insertHTML", false, `<span data-new="1">${html}</span>&nbsp;`);
-    const wrapper = root.querySelector('[data-new="1"]');
-    if (!wrapper) return;
-    wrapper.removeAttribute("data-new");
-    const found = findPlaceholder(wrapper, null, 0);
-    if (found) selectChar(found.node, found.index);
+    const text = tex.startsWith("$") || insideMath() ? tex : `$${tex}$`;
+    document.execCommand("insertText", false, text);
+    const after = window.getSelection();
+    const node = after?.anchorNode;
+    if (after && node && node.nodeType === Node.TEXT_NODE) {
+      const content = node.textContent ?? "";
+      const idx = content.indexOf(PH, Math.max(0, after.anchorOffset - text.length));
+      if (idx >= 0 && idx < after.anchorOffset) selectChar(node, idx);
+    }
+    setTick(n => n + 1);
   }
 
-  // Tab : champ suivant de la formule, ou sortie de la fraction / de l'exposant / de l'indice.
+  // Tab : champ suivant, puis sortie de la formule.
   function onEditorKey(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "Tab" || event.shiftKey) return;
     const root = editorRef.current;
@@ -149,19 +208,19 @@ export default function CapsuleEditor({
       selectChar(found.node, found.index);
       return;
     }
-    let el: Node | null = range.endContainer;
-    let top: Element | null = null;
-    while (el && el !== root) {
-      if (el instanceof Element && el.matches("sup,sub,.frac")) top = el;
-      el = el.parentNode;
-    }
-    if (top) {
-      event.preventDefault();
-      const next = document.createRange();
-      next.setStartAfter(top);
-      next.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(next);
+    if (anchor && insideMath()) {
+      const text = anchor.textContent ?? "";
+      let idx = text.indexOf("$", range.endOffset);
+      if (idx >= 0) {
+        idx += 1;
+        if (text[idx] === "$") idx += 1;
+        event.preventDefault();
+        const next = document.createRange();
+        next.setStart(anchor, idx);
+        next.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(next);
+      }
     }
   }
 
@@ -195,7 +254,7 @@ export default function CapsuleEditor({
             <h2 id="capsule-editor-title">
               {editing ? "Modifier le bloc" : "Créer un bloc"}
             </h2>
-            <p>Rédige et mets en forme le contenu de la leçon.</p>
+            <p>Écris le texte, puis les formules en LaTeX entre $ … $ (ex. $x = 3x + 2$).</p>
           </div>
           <button type="button" className="icon-button"
             onClick={onCancel} aria-label="Fermer">
@@ -235,7 +294,7 @@ export default function CapsuleEditor({
         <section className="rich-editor-section">
           <div className="rich-editor-label">
             <strong>Contenu de la leçon</strong>
-            <span>Formatage, formules et couleurs</span>
+            <span>Formatage, LaTeX et couleurs</span>
           </div>
 
           <div className="editor-toolbar">
@@ -251,11 +310,11 @@ export default function CapsuleEditor({
             {tool("Liste numérotée", <ListOrdered size={17}/>, () => format("insertOrderedList"))}
             {tool("Effacer la mise en forme", <Eraser size={17}/>, () => format("removeFormat"))}
             <span className="editor-toolbar-divider"/>
-            {tool("Clavier scientifique", <Sigma size={17}/>, () => setPanel(p => (p === "math" ? null : "math")), panel === "math")}
+            {tool("Raccourcis LaTeX", <Sigma size={17}/>, () => setPanel(p => (p === "math" ? null : "math")), panel === "math")}
             {tool("Palette de couleurs", <Palette size={17}/>, () => setPanel(p => (p === "color" ? null : "color")), panel === "color")}
           </div>
 
-          {panel === "math" && <MathKeyboard onInsert={insertHtml}/>}
+          {panel === "math" && <MathKeyboard onInsert={insertTex}/>}
           {panel === "color" && (
             <ColorPanel onText={c => paint("foreColor", c)} onBack={c => paint("hiliteColor", c)}/>
           )}
@@ -269,11 +328,19 @@ export default function CapsuleEditor({
             aria-label="Contenu de la leçon"
             aria-multiline="true"
             onKeyDown={onEditorKey}
-            data-placeholder="Écris ici l'explication, la règle, les exemples ou les formules…"
+            onKeyUp={rememberSelection}
+            onMouseUp={rememberSelection}
+            onBlur={rememberSelection}
+            onInput={() => setTick(n => n + 1)}
+            data-placeholder="Écris ici le cours. Pour une formule : $x = 3x + 2$"
           />
           <p className="editor-help">
-            Sélectionne un passage avant d'appliquer une couleur ou un format. Les ▢ sont les champs à remplir.
+            Garde chaque formule sur une seule ligne. Les ▢ sont les champs à remplir (Tab pour passer au suivant).
           </p>
+
+          <div className="preview-head"><strong>Aperçu élève</strong><span>Rendu des formules en direct</span></div>
+          <div className="preview-box"
+            dangerouslySetInnerHTML={{ __html: preview || "<span class=\"muted\">L'aperçu apparaît ici.</span>" }} />
         </section>
 
         <label className="editor-priority">

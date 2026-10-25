@@ -1,139 +1,344 @@
 import { useState } from "react";
+import { renderToString } from "katex";
+import "katex/dist/katex.min.css";
 
 export const PH = "▢";
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const frac = (n: string, d: string) =>
-  `<span class="frac"><span class="fn">${n}</span><span class="fd">${d}</span></span>`;
 
-type Key = { l: string; h: string; tip?: string };
-const key = (l: string, h: string, tip?: string): Key => ({ l, h, tip });
-const txt = (s: string, tip?: string): Key => ({ l: esc(s), h: esc(s), tip });
-const sym = (s: string): Key[] => Array.from(s).map(c => txt(c));
+type Item = { tex: string; tip: string };
+type Category = { id: string; label: string; level: string; items: Item[] };
 
-const TABS: { id: string; label: string; level: string; keys: Key[] }[] = [
-  { id: "calcul", label: "Calcul", level: "3ᵉ · Lycée", keys: [
-    key(frac("a", "b"), frac(PH, PH), "Fraction"),
-    key("x<sup>n</sup>", `${PH}<sup>${PH}</sup>`, "Puissance"),
-    txt("x²".replace("x", ""), "Carré"), txt("³", "Cube"), txt("⁻¹", "Inverse"),
-    key("√x", `√(${PH})`, "Racine carrée"), key("∛x", `∛(${PH})`, "Racine cubique"),
-    key("<sup>n</sup>√x", `<sup>${PH}</sup>√(${PH})`, "Racine n-ième"),
-    key("10<sup>n</sup>", `10<sup>${PH}</sup>`, "Puissance de 10"),
-    key("a×10<sup>n</sup>", `${PH} × 10<sup>${PH}</sup>`, "Écriture scientifique"),
-    key("|x|", `|${PH}|`, "Valeur absolue"),
-    ...sym("+−×÷±·=≠≈≤≥<>%‰π∞°"), ...sym("()[]{}"),
-    key("[a ; b]", `[${PH} ; ${PH}]`, "Intervalle fermé"),
-    key("]a ; b[", `]${PH} ; ${PH}[`, "Intervalle ouvert"),
-    key("[a ; b[", `[${PH} ; ${PH}[`, "Intervalle semi-ouvert"),
-    key("]a ; +∞[", `]${PH} ; +∞[`), key("]−∞ ; a]", `]−∞ ; ${PH}]`),
-    key("(a+b)²", "(a + b)² = a² + 2ab + b²", "Identité remarquable"),
-    key("(a−b)²", "(a − b)² = a² − 2ab + b²", "Identité remarquable"),
-    key("a²−b²", "a² − b² = (a − b)(a + b)", "Identité remarquable")
+const R = String.raw;
+
+const parse = (block: string): Item[] =>
+  block.trim().split("\n").map(line => {
+    const at = line.lastIndexOf(" // ");
+    return at < 0
+      ? { tex: line.trim(), tip: "" }
+      : { tex: line.slice(0, at).trim(), tip: line.slice(at + 4).trim() };
+  });
+
+const greek = (names: string): Item[] =>
+  names.split(" ").map(n => ({ tex: "\\" + n, tip: n }));
+
+const CATS: Category[] = [
+  { id: "base", label: "Essentiels", level: "Tous niveaux", items: parse(R`
+$▢$ // Formule dans une phrase
+$$▢$$ // Formule centrée sur sa ligne
+\frac{▢}{▢} // Fraction
+\dfrac{▢}{▢} // Grande fraction
+▢^{▢} // Puissance
+▢_{▢} // Indice
+▢^{2} // Carré
+\sqrt{▢} // Racine carrée
+\sqrt[3]{▢} // Racine cubique
+\sqrt[▢]{▢} // Racine n-ième
+\left|▢\right| // Valeur absolue
+\left(▢\right) // Parenthèses adaptées
+\left[▢\right] // Crochets adaptés
+\left\{▢\right\} // Accolades adaptées
+\times // Multiplication
+\div // Division
+\pm // Plus ou moins
+\cdot // Point de multiplication
+\neq // Différent
+\approx // Environ égal
+\leq // Inférieur ou égal
+\geq // Supérieur ou égal
+< // Inférieur
+> // Supérieur
+\infty // Infini
+\pi // Pi
+^{\circ} // Degré
+\% // Pourcentage
+`) },
+  { id: "equations", label: "Équations", level: "3ᵉ → Terminale", items: parse(R`
+x = 3x + 2 // Équation simple (modèle)
+ax + b = 0 // Équation du 1er degré
+y = ax + b // Droite
+\Leftrightarrow // Équivaut à
+\Rightarrow // Implique
+\boxed{▢} // Encadrer le résultat
+\begin{array}{rl} ▢ &= ▢ \\ &= ▢ \end{array} // Calcul en plusieurs lignes
+\begin{array}{rl} ▢x + ▢ &= ▢ \\ ▢x &= ▢ \\ x &= \dfrac{▢}{▢} \end{array} // Résolution pas à pas
+\begin{cases} ▢ \\ ▢ \end{cases} // Système de 2 équations
+\begin{cases} ▢x + ▢y = ▢ \\ ▢x + ▢y = ▢ \end{cases} // Système linéaire
+S = \{▢\} // Ensemble solution
+S = \emptyset // Aucune solution
+▢ \leq x \leq ▢ // Encadrement
+▢ < x < ▢ // Inégalité stricte
+ax^2 + bx + c = 0 // Équation du 2nd degré
+\Delta = b^2 - 4ac // Discriminant
+x = \dfrac{-b \pm \sqrt{\Delta}}{2a} // Solutions
+x_1 + x_2 = -\dfrac{b}{a} // Somme des racines
+x_1 \times x_2 = \dfrac{c}{a} // Produit des racines
+f(x) = ▢ // Fonction
+f : x \mapsto ▢ // Fonction (notation)
+f(▢) = ▢ // Image
+`) },
+  { id: "calcul", label: "Calcul", level: "3ᵉ", items: parse(R`
+\dfrac{a}{b} + \dfrac{c}{d} = \dfrac{ad + bc}{bd} // Somme de fractions
+\dfrac{a}{b} \times \dfrac{c}{d} = \dfrac{ac}{bd} // Produit de fractions
+\dfrac{a}{b} \div \dfrac{c}{d} = \dfrac{a}{b} \times \dfrac{d}{c} // Quotient de fractions
+a^m \times a^n = a^{m+n} // Produit de puissances
+\dfrac{a^m}{a^n} = a^{m-n} // Quotient de puissances
+(a^m)^n = a^{mn} // Puissance de puissance
+a^{-n} = \dfrac{1}{a^n} // Puissance négative
+a^0 = 1 // Puissance zéro
+▢ \times 10^{▢} // Écriture scientifique
+10^{-▢} // Puissance de 10 négative
+\sqrt{a \times b} = \sqrt{a} \times \sqrt{b} // Racine d'un produit
+\sqrt{\dfrac{a}{b}} = \dfrac{\sqrt{a}}{\sqrt{b}} // Racine d'un quotient
+\dfrac{▢}{100} \times ▢ // Pourcentage d'une quantité
+(a + b)^2 = a^2 + 2ab + b^2 // Identité remarquable
+(a - b)^2 = a^2 - 2ab + b^2 // Identité remarquable
+(a + b)(a - b) = a^2 - b^2 // Identité remarquable
+`) },
+  { id: "geo", label: "Géométrie", level: "3ᵉ → Terminale", items: parse(R`
+AB^2 = AC^2 + BC^2 // Pythagore
+\dfrac{AM}{AB} = \dfrac{AN}{AC} = \dfrac{MN}{BC} // Thalès
+\cos \widehat{▢} = \dfrac{\text{côté adjacent}}{\text{hypoténuse}} // Cosinus
+\sin \widehat{▢} = \dfrac{\text{côté opposé}}{\text{hypoténuse}} // Sinus
+\tan \widehat{▢} = \dfrac{\text{côté opposé}}{\text{côté adjacent}} // Tangente
+\cos^2 x + \sin^2 x = 1 // Relation fondamentale
+\widehat{ABC} // Angle
+\overrightarrow{AB} // Vecteur AB
+\vec{u} // Vecteur u
+\overline{AB} // Barre au-dessus
+\begin{pmatrix} ▢ \\ ▢ \end{pmatrix} // Coordonnées d'un vecteur
+\begin{pmatrix} ▢ \\ ▢ \\ ▢ \end{pmatrix} // Vecteur en 3D
+\left\| \vec{u} \right\| = \sqrt{x^2 + y^2} // Norme
+\vec{u} \cdot \vec{v} = xx' + yy' // Produit scalaire
+(AB) \perp (CD) // Droites perpendiculaires
+(AB) \parallel (CD) // Droites parallèles
+\triangle ABC // Triangle
+\perp // Perpendiculaire
+\parallel // Parallèle
+\pi r^2 // Aire du disque
+2 \pi r // Périmètre du cercle
+\dfrac{1}{3} \pi r^2 h // Volume du cône
+\dfrac{4}{3} \pi r^3 // Volume de la sphère
+\text{cm}^2 // cm carré
+\text{cm}^3 // cm cube
+`) },
+  { id: "analyse", label: "Analyse", level: "Terminale", items: parse(R`
+\lim_{x \to ▢} ▢ // Limite
+\lim_{x \to +\infty} ▢ // Limite en plus l'infini
+\lim_{x \to -\infty} ▢ // Limite en moins l'infini
+\lim_{x \to ▢^{+}} ▢ // Limite à droite
+\lim_{x \to ▢^{-}} ▢ // Limite à gauche
+f'(x) // Dérivée
+f''(x) // Dérivée seconde
+\dfrac{df}{dx} // Dérivée (Leibniz)
+(u + v)' = u' + v' // Dérivée d'une somme
+(uv)' = u'v + uv' // Dérivée d'un produit
+\left( \dfrac{u}{v} \right)' = \dfrac{u'v - uv'}{v^2} // Dérivée d'un quotient
+(u^n)' = n u' u^{n-1} // Dérivée d'une puissance
+\left( \sqrt{u} \right)' = \dfrac{u'}{2\sqrt{u}} // Dérivée d'une racine
+(e^{u})' = u' e^{u} // Dérivée de l'exponentielle
+(\ln u)' = \dfrac{u'}{u} // Dérivée du logarithme
+\int_{▢}^{▢} ▢ \, dx // Intégrale définie
+\int ▢ \, dx // Primitive
+\left[ F(x) \right]_{▢}^{▢} // Crochet d'évaluation
+\int_{a}^{b} f(x) \, dx = F(b) - F(a) // Calcul d'une intégrale
+\ln(▢) // Logarithme népérien
+e^{▢} // Exponentielle
+\exp(▢) // Exponentielle (notation)
+\log(▢) // Logarithme décimal
+\ln(ab) = \ln a + \ln b // Propriété de ln
+\ln \left( \dfrac{a}{b} \right) = \ln a - \ln b // Propriété de ln
+\ln(a^n) = n \ln a // Propriété de ln
+\sin(▢) // Sinus
+\cos(▢) // Cosinus
+\tan(▢) // Tangente
+\arctan(▢) // Arc tangente
+\sum_{k=▢}^{▢} ▢ // Somme
+`) },
+  { id: "suites", label: "Suites", level: "Terminale", items: parse(R`
+u_n // Terme général
+u_{n+1} // Terme suivant
+(u_n)_{n \in \mathbb{N}} // Suite
+u_{n+1} = u_n + r // Récurrence arithmétique
+u_n = u_0 + n r // Terme arithmétique
+u_{n+1} = q \times u_n // Récurrence géométrique
+u_n = u_0 \times q^n // Terme géométrique
+\sum_{k=0}^{n} u_k = \dfrac{(n+1)(u_0 + u_n)}{2} // Somme arithmétique
+\sum_{k=0}^{n} q^k = \dfrac{1 - q^{n+1}}{1 - q} // Somme géométrique
+\lim_{n \to +\infty} u_n = ▢ // Limite d'une suite
+\forall n \in \mathbb{N} // Pour tout entier n
+\mathcal{P}(n) // Propriété de récurrence
+\mathcal{P}(0) \text{ est vraie} // Initialisation
+\mathcal{P}(n) \Rightarrow \mathcal{P}(n+1) // Hérédité
+`) },
+  { id: "proba", label: "Probabilités", level: "Terminale", items: parse(R`
+n! // Factorielle
+A_n^p = \dfrac{n!}{(n-p)!} // Arrangements
+\binom{n}{p} // Combinaison
+\binom{n}{p} = \dfrac{n!}{p!\,(n-p)!} // Formule des combinaisons
+P(A) // Probabilité
+P(A \cap B) // Intersection
+P(A \cup B) = P(A) + P(B) - P(A \cap B) // Réunion
+P_B(A) = \dfrac{P(A \cap B)}{P(B)} // Probabilité conditionnelle
+\overline{A} // Événement contraire
+P(\overline{A}) = 1 - P(A) // Probabilité du contraire
+E(X) = \sum x_i \, P(X = x_i) // Espérance
+V(X) = E(X^2) - E(X)^2 // Variance
+\sigma(X) = \sqrt{V(X)} // Écart type
+X \sim \mathcal{B}(n \,;\, p) // Loi binomiale
+P(X = k) = \binom{n}{k} p^k (1-p)^{n-k} // Formule binomiale
+\bar{x} = \dfrac{\sum n_i x_i}{N} // Moyenne
+`) },
+  { id: "complexes", label: "Complexes", level: "Terminale C, D", items: parse(R`
+i^2 = -1 // Unité imaginaire
+z = a + ib // Forme algébrique
+\bar{z} // Conjugué
+|z| = \sqrt{a^2 + b^2} // Module
+\arg(z) // Argument
+\mathrm{Re}(z) // Partie réelle
+\mathrm{Im}(z) // Partie imaginaire
+e^{i\theta} // Exponentielle complexe
+z = r(\cos\theta + i\sin\theta) // Forme trigonométrique
+z = r e^{i\theta} // Forme exponentielle
+z = \dfrac{-b \pm i\sqrt{-\Delta}}{2a} // Racines complexes
+\overline{z_1 z_2} = \overline{z_1} \, \overline{z_2} // Conjugué d'un produit
+|z_1 z_2| = |z_1| \, |z_2| // Module d'un produit
+z^n = r^n e^{in\theta} // Formule de Moivre
+`) },
+  { id: "ensembles", label: "Ensembles", level: "3ᵉ → Terminale", items: parse(R`
+\in // Appartient
+\notin // N'appartient pas
+\subset // Inclus
+\subseteq // Inclus ou égal
+\cup // Réunion
+\cap // Intersection
+\emptyset // Ensemble vide
+\setminus // Privé de
+\mathbb{N} // Entiers naturels
+\mathbb{Z} // Entiers relatifs
+\mathbb{Q} // Rationnels
+\mathbb{R} // Réels
+\mathbb{C} // Complexes
+\mathbb{R}^{*} // Réels non nuls
+\mathbb{R}_{+} // Réels positifs
+\mathbb{R}_{-} // Réels négatifs
+\mathbb{N}^{*} // Entiers non nuls
+\forall // Pour tout
+\exists // Il existe
+\nexists // Il n'existe pas
+\neg // Négation
+\land // Et
+\lor // Ou
+\to // Flèche
+\mapsto // Associe
+\longrightarrow // Longue flèche
+[▢ \,;\, ▢] // Intervalle fermé
+]▢ \,;\, ▢[ // Intervalle ouvert
+[▢ \,;\, ▢[ // Intervalle semi-ouvert
+]▢ \,;\, ▢] // Intervalle semi-ouvert
+[▢ \,;\, +\infty[ // Intervalle non borné
+]-\infty \,;\, ▢] // Intervalle non borné
+`) },
+  { id: "grec", label: "Grec", level: "Tous niveaux", items: [
+    ...greek("alpha beta gamma delta epsilon varepsilon zeta eta theta lambda mu nu xi pi rho sigma tau phi varphi chi psi omega"),
+    ...greek("Gamma Delta Theta Lambda Xi Pi Sigma Phi Psi Omega")
   ] },
-  { id: "geo", label: "Géométrie", level: "3ᵉ · Lycée", keys: [
-    key("a²=b²+c²", `${PH}² = ${PH}² + ${PH}²`, "Pythagore"),
-    key(frac("AM", "AB") + "=" + frac("AN", "AC"), `${frac(PH, PH)} = ${frac(PH, PH)} = ${frac(PH, PH)}`, "Thalès"),
-    key("cos", `cos(${PH}) = ${frac("côté adjacent", "hypoténuse")}`, "Cosinus"),
-    key("sin", `sin(${PH}) = ${frac("côté opposé", "hypoténuse")}`, "Sinus"),
-    key("tan", `tan(${PH}) = ${frac("côté opposé", "côté adjacent")}`, "Tangente"),
-    txt("x̂".slice(1), "Chapeau sur la lettre précédente (angle)"),
-    txt("\u20D7", "Flèche sur la lettre précédente (vecteur)"),
-    txt("\u0304", "Barre sur la lettre précédente"),
-    txt("AB\u20D7", "Vecteur AB"), txt("u\u20D7"), txt("v\u20D7"), txt("i\u20D7"), txt("j\u20D7"),
-    key("∠ABC", `∠${PH}${PH}${PH}`, "Angle"),
-    key("(AB)", `(${PH}${PH})`, "Droite"), key("[AB]", `[${PH}${PH}]`, "Segment"), key("[AB)", `[${PH}${PH})`, "Demi-droite"),
-    ...sym("⊥∥△≅∠°′″"),
-    txt("πr²", "Aire du disque"), txt("2πr", "Périmètre du cercle"), txt("cm²"), txt("cm³"), txt("m²"), txt("m³")
+  { id: "matrices", label: "Matrices", level: "Terminale", items: parse(R`
+\begin{pmatrix} ▢ & ▢ \\ ▢ & ▢ \end{pmatrix} // Matrice 2×2
+\begin{pmatrix} ▢ & ▢ & ▢ \\ ▢ & ▢ & ▢ \\ ▢ & ▢ & ▢ \end{pmatrix} // Matrice 3×3
+\begin{vmatrix} ▢ & ▢ \\ ▢ & ▢ \end{vmatrix} // Déterminant 2×2
+\begin{array}{|c|c|c|} \hline x & ▢ & ▢ \\ \hline f(x) & ▢ & ▢ \\ \hline \end{array} // Tableau de valeurs
+\begin{array}{c|ccccc} x & -\infty & & ▢ & & +\infty \\ \hline f'(x) & & + & 0 & - & \\ \hline f(x) & & \nearrow & & \searrow & \end{array} // Tableau de variations
+`) },
+  { id: "chimie", label: "Physique-Chimie", level: "Lycée", items: [
+    ...parse(R`
+\mathrm{H_2O} // Eau
+\mathrm{CO_2} // Dioxyde de carbone
+\mathrm{O_2} // Dioxygène
+\mathrm{Fe^{3+}} // Ion fer III
+\mathrm{SO_4^{2-}} // Ion sulfate
+\rightleftharpoons // Réaction réversible
+\longrightarrow // Réaction
+\Delta H // Variation d'enthalpie
+v = \dfrac{d}{t} // Vitesse
+F = m \times a // Force
+U = R \times I // Loi d'Ohm
+P = U \times I // Puissance électrique
+E = m c^2 // Énergie
+n = \dfrac{m}{M} // Quantité de matière
+C = \dfrac{n}{V} // Concentration
+\text{mol} \cdot \text{L}^{-1} // Mole par litre
+^{\circ}\text{C} // Degré Celsius
+`),
+    { tex: "\\uparrow", tip: "Gaz dégagé" },
+    { tex: "\\downarrow", tip: "Précipité" }
   ] },
-  { id: "algebre", label: "Algèbre", level: "3ᵉ · Lycée", keys: [
-    txt("ax + b = 0"), txt("ax² + bx + c = 0"), txt("Δ = b² − 4ac", "Discriminant"),
-    key(frac("−b ± √Δ", "2a"), `x = ${frac("−b ± √Δ", "2a")}`, "Solutions de l'équation du second degré"),
-    key("x₁+x₂", `x₁ + x₂ = ${frac("−b", "a")}`, "Somme des racines"),
-    key("x₁×x₂", `x₁ × x₂ = ${frac("c", "a")}`, "Produit des racines"),
-    key("{ ⋯", `{&nbsp;${PH}<br>&nbsp;&nbsp;${PH}`, "Système de deux équations"),
-    key("S = { }", `S = {${PH}}`, "Ensemble solution"), txt("S = ∅"),
-    txt("f(x)"), key("f : x ↦", `f : x ↦ ${PH}`, "Définition d'une fonction"),
-    txt("f′(x)"), txt("(f ∘ g)(x)"), txt("f⁻¹"),
-    key("a ≤ x ≤ b", `${PH} ≤ x ≤ ${PH}`, "Encadrement"),
-    ...sym("∈∉⊂⊄⊆∪∩∅∖ℕℤℚℝℂ∀∃∄¬∧∨⇒⇔∴∵"),
-    txt("ℝ*"), txt("ℝ⁺"), txt("ℝ⁻"), txt("ℕ*")
-  ] },
-  { id: "analyse", label: "Analyse", level: "Terminale", keys: [
-    key("lim", `lim<sub>x→${PH}</sub> `, "Limite"),
-    key("lim<sub>+∞</sub>", "lim<sub>x→+∞</sub> ", "Limite en +∞"),
-    key("lim<sub>−∞</sub>", "lim<sub>x→−∞</sub> ", "Limite en −∞"),
-    key("lim<sub>a⁺</sub>", `lim<sub>x→${PH}⁺</sub> `, "Limite à droite"),
-    key("lim<sub>a⁻</sub>", `lim<sub>x→${PH}⁻</sub> `, "Limite à gauche"),
-    txt("+∞"), txt("−∞"), txt("→"),
-    txt("f′(x)"), txt("f″(x)"), key(frac("df", "dx"), frac("df", "dx"), "Dérivée"),
-    txt("u′"), key("(u+v)′", "(u + v)′ = u′ + v′"), key("(uv)′", "(uv)′ = u′v + uv′"),
-    key(frac("u", "v") + "′", `(${frac("u", "v")})′ = ${frac("u′v − uv′", "v²")}`, "Dérivée d'un quotient"),
-    key("(eᵘ)′", "(eᵘ)′ = u′eᵘ"), key("(ln u)′", `(ln u)′ = ${frac("u′", "u")}`),
-    key("∫<sub>a</sub><sup>b</sup>", `∫<sub>${PH}</sub><sup>${PH}</sup> ${PH} dx`, "Intégrale définie"),
-    key("∫ f dx", `∫ ${PH} dx`, "Primitive"),
-    key("[F]<sub>a</sub><sup>b</sup>", `[${PH}]<sub>${PH}</sub><sup>${PH}</sup>`, "Crochet d'évaluation"),
-    key("∑", `∑<sub>i=${PH}</sub><sup>${PH}</sup>`, "Somme"),
-    key("e<sup>x</sup>", `e<sup>${PH}</sup>`, "Exponentielle"),
-    key("ln", `ln(${PH})`), key("log", `log(${PH})`), key("exp", `exp(${PH})`),
-    key("sin", `sin(${PH})`), key("cos", `cos(${PH})`), key("tan", `tan(${PH})`), key("arctan", `arctan(${PH})`),
-    key("uₙ", "u<sub>n</sub>"), key("uₙ₊₁", "u<sub>n+1</sub>"), key("u₀", "u<sub>0</sub>"),
-    key("arith.", "u<sub>n</sub> = u<sub>0</sub> + nr", "Suite arithmétique"),
-    key("géom.", "u<sub>n</sub> = u<sub>0</sub> × q<sup>n</sup>", "Suite géométrique"),
-    ...sym("∂∇Δ")
-  ] },
-  { id: "complexes", label: "Complexes", level: "Terminale", keys: [
-    txt("i"), txt("i² = −1"), txt("z = a + ib"), txt("z\u0304", "Conjugué"),
-    key("|z|", `|${PH}|`, "Module"), key("arg", `arg(${PH})`, "Argument"), txt("Re(z)"), txt("Im(z)"),
-    key("e<sup>iθ</sup>", "e<sup>iθ</sup>", "Forme exponentielle"),
-    key("r(cosθ+i sinθ)", `${PH}(cos θ + i sin θ)`, "Forme trigonométrique"),
-    key("[r ; θ]", `[${PH} ; ${PH}]`, "Forme polaire"),
-    key(frac("−b ± i√(−Δ)", "2a"), `z = ${frac("−b ± i√(−Δ)", "2a")}`, "Racines complexes"),
-    txt("z₁"), txt("z₂"), txt("z′"), txt("θ"), txt("ρ")
-  ] },
-  { id: "proba", label: "Proba & stats", level: "Terminale", keys: [
-    key("n!", `${PH}!`, "Factorielle"),
-    key("A<sub>n</sub><sup>p</sup>", `A<sub>${PH}</sub><sup>${PH}</sup>`, "Arrangements"),
-    key("C<sub>n</sub><sup>p</sup>", `C<sub>${PH}</sub><sup>${PH}</sup>`, "Combinaisons"),
-    key("C<sub>n</sub><sup>p</sup>=", `C<sub>n</sub><sup>p</sup> = ${frac("n!", "p!(n − p)!")}`, "Formule des combinaisons"),
-    key("P(A)", `P(${PH})`), txt("P(A ∩ B)"), key("P(A∪B)", "P(A ∪ B) = P(A) + P(B) − P(A ∩ B)"),
-    key("P<sub>B</sub>(A)", `P<sub>${PH}</sub>(${PH})`, "Probabilité conditionnelle"),
-    key("P<sub>B</sub>(A)=", `P<sub>B</sub>(A) = ${frac("P(A ∩ B)", "P(B)")}`),
-    txt("P(Ā)"), txt("E(X)"), txt("V(X)"), txt("σ(X)"),
-    key("ℬ(n ; p)", `ℬ(${PH} ; ${PH})`, "Loi binomiale"),
-    key("P(X=k)", "P(X = k) = C<sub>n</sub><sup>k</sup> p<sup>k</sup>(1 − p)<sup>n−k</sup>", "Loi binomiale"),
-    txt("x\u0304", "Moyenne"), key("x̄=", `x\u0304 = ${frac("∑ n<sub>i</sub>x<sub>i</sub>", "N")}`, "Moyenne pondérée"),
-    key("Q₁", "Q<sub>1</sub>"), key("Q₃", "Q<sub>3</sub>"), ...sym("σμ∩∪")
-  ] },
-  { id: "grec", label: "Grec", level: "Tous niveaux", keys: [...sym("αβγδεζηθικλμνξπρστυφχψω"), ...sym("ΓΔΘΛΞΠΣΦΨΩ")] },
-  { id: "symboles", label: "Symboles", level: "Tous niveaux", keys: [
-    ...sym("→←↔↦⇒⇔⇌↑↓≡≪≫∝∣∥⊥‰′″"),
-    ...sym("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼ⁿ⁽⁾"), ...sym("₀₁₂₃₄₅₆₇₈₉₊₋₌ₙₓₐₑᵢ₍₎")
-  ] },
-  { id: "sciences", label: "Sciences", level: "Physique-Chimie · SVT", keys: [
-    txt("H₂O"), txt("CO₂"), txt("O₂"), txt("NaCl"), txt("°C"), txt("m/s²"), txt("mol/L"), txt("kg·m⁻³"),
-    key("ion", `${PH}<sup>${PH}</sup>`, "Ion (ex. Fe³⁺)"), key("X<sub>n</sub>", `${PH}<sub>${PH}</sub>`, "Indice"),
-    txt("⇌", "Réaction réversible"), txt("→"), txt("↑", "Gaz dégagé"), txt("↓", "Précipité"),
-    txt("ΔH"), txt("Ω"), txt("µ"), txt("Å"), txt("ħ"), txt("ℓ"), txt("∘")
+  { id: "forme", label: "Mise en forme", level: "LaTeX", items: [
+    ...parse(R`
+\text{▢} // Texte dans une formule
+\, // Petit espace
+\quad // Espace moyen
+\\ // Nouvelle ligne
+\overbrace{▢}^{▢} // Accolade dessus
+\mathbf{▢} // Gras
+\hat{▢} // Chapeau
+\tilde{▢} // Tilde
+\dots // Points de suspension
+\cdots // Points centrés
+\vdots // Points verticaux
+`),
+    { tex: "\\underbrace{▢}_{▢}", tip: "Accolade dessous" },
+    { tex: "\\underline{▢}", tip: "Souligné" }
   ] }
 ];
 
-export function MathKeyboard({ onInsert }: { onInsert: (html: string) => void }) {
-  const [tab, setTab] = useState(TABS[0].id);
-  const current = TABS.find(t => t.id === tab) ?? TABS[0];
+const ALL: Item[] = CATS.flatMap(c => c.items);
+const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+const cache = new Map<string, string>();
+function label(tex: string): string {
+  const hit = cache.get(tex);
+  if (hit) return hit;
+  let html: string;
+  if (tex.startsWith("$")) {
+    html = `<span class="kit-raw">${tex.split(PH).join("…").replace(/&/g, "&amp;").replace(/</g, "&lt;")}</span>`;
+  } else {
+    try {
+      html = renderToString(tex.split(PH).join("\\square "), { throwOnError: false, output: "html" });
+    } catch {
+      html = tex.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    }
+  }
+  cache.set(tex, html);
+  return html;
+}
+
+export function MathKeyboard({ onInsert }: { onInsert: (tex: string) => void }) {
+  const [tab, setTab] = useState(CATS[0].id);
+  const [query, setQuery] = useState("");
+  const q = norm(query.trim());
+  const current = CATS.find(c => c.id === tab) ?? CATS[0];
+  const items = q ? ALL.filter(i => norm(i.tip + " " + i.tex).includes(q)) : current.items;
+
   return (
     <div className="kit-panel">
+      <input className="kit-search" value={query} onChange={e => setQuery(e.target.value)}
+        placeholder="Rechercher un raccourci : fraction, racine, intégrale, Pythagore…" />
       <div className="kit-tabs">
-        {TABS.map(t => (
-          <button type="button" key={t.id} className={t.id === tab ? "on" : ""}
-            onMouseDown={e => e.preventDefault()} onClick={() => setTab(t.id)}>{t.label}</button>
+        {CATS.map(c => (
+          <button type="button" key={c.id} className={!q && c.id === tab ? "on" : ""}
+            onMouseDown={e => e.preventDefault()} onClick={() => { setQuery(""); setTab(c.id); }}>{c.label}</button>
         ))}
       </div>
-      <div className="kit-title">{current.level} · Tab = champ suivant ou sortir de la formule</div>
-      <div className="kit-keys">
-        {current.keys.map((k, i) => (
-          <button type="button" key={i} title={k.tip ?? k.h.replace(/<[^>]*>/g, "")}
-            onMouseDown={e => e.preventDefault()} onClick={() => onInsert(k.h)}
-            dangerouslySetInnerHTML={{ __html: k.l }} />
+      <div className="kit-title">
+        {q ? `${items.length} résultat(s)` : current.level} · Tab = champ suivant, puis sortir de la formule
+      </div>
+      <div className="kit-keys kit-tex">
+        {items.map((it, i) => (
+          <button type="button" key={i} title={`${it.tip}\n${it.tex}`}
+            className={it.tex.length > 46 ? "xwide" : it.tex.length > 22 ? "wide" : ""}
+            onMouseDown={e => e.preventDefault()} onClick={() => onInsert(it.tex)}
+            dangerouslySetInnerHTML={{ __html: label(it.tex) }} />
         ))}
+        {items.length === 0 && <p className="kit-empty">Aucun raccourci trouvé.</p>}
       </div>
     </div>
   );
