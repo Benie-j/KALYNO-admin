@@ -3,7 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import {
   Activity, AlertCircle, ArrowDownUp, BookOpen, Check, ChevronDown, CircleHelp,
   ClipboardList, Cloud, FileText, GraduationCap, LayoutDashboard, LogOut, Plus,
-  RefreshCw, Save, Search, ShieldCheck, Sparkles, Target, Trash2, UploadCloud,
+  RefreshCw, Rocket, Save, Search, ShieldCheck, Sparkles, Target, Trash2, UploadCloud,
   X
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -11,6 +11,7 @@ import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
 import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
+import FirstChallengeComposer from "./FirstChallengeComposer";
 
 type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
 type Subject = { id: string; level_id: string; name: string; emoji: string | null; icon_key: string | null; coefficient: number; position: number; is_active: boolean };
@@ -21,7 +22,7 @@ type Banner = { id: string; title: string; subtitle: string | null; button_label
 type Challenge = { id: string; level_id: string; title: string; position: number; status: "draft" | "published"; kind: "discovery" | "standard" };
 type Question = { id: string; challenge_id: string; position: number; prompt: string; choices: string[]; correct_index: number; explanation: string | null };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "dojo";
+type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge" | "dojo";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 const KIND_LABEL: Record<string, string> = { intro: "Introduction", text: "Texte", rule: "Règle / formule", tip: "Astuce", pitfall: "Piège à éviter" };
 
@@ -506,6 +507,7 @@ export default function App() {
     { id: "themes" as Section, label: "Thèmes · Organisation", icon: ArrowDownUp },
     { id: "banners" as Section, label: "Explorer · À la une", icon: Sparkles },
     { id: "motivation" as Section, label: "Accueil · Examens & citations", icon: Activity },
+    { id: "firstchallenge" as Section, label: "Premier défi · Onboarding", icon: Rocket },
     { id: "dojo" as Section, label: "Dojo · Défis", icon: Target }
   ];
 
@@ -608,6 +610,8 @@ export default function App() {
             <div className="banner-tip"><Sparkles size={19}/><div><strong>Publication contrôlée</strong><p>Une bannière est créée en brouillon. Active-la uniquement après vérification du titre et de sa destination. Une bannière sans classe cible est valable pour toutes les classes.</p></div></div>
             {banners.length===0?<Empty text="Aucune bannière enregistrée dans Supabase. Il n’y a pas de contenu de démonstration."/>:<div className="banner-list">{banners.map(banner=><article className={`banner-card ${banner.is_active?"banner-live":""}`} key={banner.id}><div className="banner-art"><Sparkles size={22}/><span>EXPLORER</span></div><div className="banner-copy"><div className="banner-meta"><Status status={banner.is_active?"published":"draft"}/><span>{banner.level_id?levels.find(l=>l.id===banner.level_id)?.label??banner.level_id:"Toutes les classes"}</span></div><h3>{banner.title}</h3><p>{banner.subtitle||"Sans sous-titre"}</p><small>{banner.button_label?`Bouton : ${banner.button_label}`:"Bannière informative"} · {banner.chapter_id?"Chapitre associé":"Aucune destination"}</small></div><div className="banner-actions"><button className="secondary" onClick={()=>void editBanner(banner)}>Modifier</button><button className={banner.is_active?"secondary":"small-primary"} onClick={()=>void toggleBanner(banner)}>{banner.is_active?"Désactiver":"Publier"}</button><button className="icon-button danger" onClick={()=>void deleteBanner(banner)} title="Supprimer"><Trash2 size={16}/></button></div></article>)}</div>}
           </section>}
+
+          {section === "firstchallenge" && <FirstChallengeComposer levels={levels} levelId={levelId} onLevelChange={setLevelId} onNotice={setNotice} />}
 
           {section === "dojo" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">ENTRAÎNEMENT & QCM</div><h2>Préparer les défis du Dojo</h2><p>Les défis publiés sont chargés par l’application Android selon la classe de l’élève.</p></div><button className="primary" onClick={()=>void createChallenge()} disabled={!levelId}><Plus size={16}/> Nouveau défi</button></div>
