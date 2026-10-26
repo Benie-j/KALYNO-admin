@@ -4,7 +4,7 @@ import {
   Bold, Italic, Underline, Strikethrough, List, ListOrdered, Heading2, Superscript, Subscript,
   Quote, Eraser, Sigma, Palette, Square, X, Save
 } from "lucide-react";
-import { ColorPanel, MathKeyboard, PH } from "./FormatKit";
+import { ColorPanel, MathKeyboard, PH, PRESETS, PresetBar, type Preset } from "./FormatKit";
 
 export type CapsuleEditorDraft = {
   title: string;
@@ -80,7 +80,8 @@ function renderPreview(html: string): string {
       try {
         return katex.renderToString(plainText(block ?? inline ?? ""), {
           displayMode: block !== undefined,
-          throwOnError: false
+          throwOnError: false,
+          errorColor: "#B91C1C"
         });
       } catch {
         return match;
@@ -154,13 +155,19 @@ export default function CapsuleEditor({
     document.execCommand("styleWithCSS", false, "false");
   }
 
+  function applyPreset(p: Preset) {
+    paint("foreColor", p.text);
+    paint("hiliteColor", p.bg);
+    setTick(n => n + 1);
+  }
+
   function toggleStrike() {
     editorRef.current?.focus();
     document.execCommand("strikeThrough", false);
     setTick(n => n + 1);
   }
 
-  function insertBox() {
+  function insertBox(p?: Preset) {
     const root = editorRef.current;
     if (!root) return;
     root.focus();
@@ -172,8 +179,8 @@ export default function CapsuleEditor({
       : node?.parentElement ?? null;
     const block = element?.closest<HTMLElement>("div:not(.rich-editor)");
     if (block && root.contains(block)) {
-      block.style.border = "1px solid #2457c5";
-      block.style.backgroundColor = "#eef3ff";
+      block.style.border = `1px solid ${p?.border ?? "#0F766E"}`;
+      block.style.backgroundColor = p?.bg ?? "#E6F4F1";
       block.style.padding = "8px";
       block.style.borderRadius = "8px";
     }
@@ -225,6 +232,13 @@ export default function CapsuleEditor({
 
   // Tab : champ suivant, puis sortie de la formule.
   function onEditorKey(event: React.KeyboardEvent<HTMLDivElement>) {
+    const digit = /^Digit([1-7])$/.exec(event.code);
+    if (event.altKey && digit) {
+      event.preventDefault();
+      const preset = PRESETS[Number(digit[1]) - 1];
+      if (event.shiftKey) insertBox(preset); else applyPreset(preset);
+      return;
+    }
     if (event.key !== "Tab" || event.shiftKey) return;
     const root = editorRef.current;
     const selection = window.getSelection();
@@ -331,7 +345,7 @@ export default function CapsuleEditor({
             {tool("Italique", <Italic size={17}/>, () => format("italic"))}
             {tool("Souligné", <Underline size={17}/>, () => format("underline"))}
             {tool("Barré", <Strikethrough size={17}/>, toggleStrike)}
-            {tool("Encadré coloré", <Square size={17}/>, insertBox)}
+            {tool("Encadré coloré", <Square size={17}/>, () => insertBox())}
             {tool("Exposant", <Superscript size={17}/>, () => format("superscript"))}
             {tool("Indice", <Subscript size={17}/>, () => format("subscript"))}
             <span className="editor-toolbar-divider"/>
@@ -345,6 +359,7 @@ export default function CapsuleEditor({
             {tool("Palette de couleurs", <Palette size={17}/>, () => setPanel(p => (p === "color" ? null : "color")), panel === "color")}
           </div>
 
+          <PresetBar onText={applyPreset} onBox={insertBox}/>
           {panel === "math" && <MathKeyboard onInsert={insertTex}/>}
           {panel === "color" && (
             <ColorPanel onText={c => paint("foreColor", c)} onBack={c => paint("hiliteColor", c)}/>

@@ -126,3 +126,9 @@
 .level-actions{display:flex;gap:4px;flex-shrink:0}
 @media(max-width:1050px){.levels-layout{grid-template-columns:1fr}}
 @media(max-width:500px){.levels-two{grid-template-columns:1fr}.level-card{align-items:flex-start;flex-wrap:wrap}.level-actions{margin-left:42px}.levels-form-actions button{flex:1}}
+
+/* palette sémantique : règle, astuce, piège… */
+.preset-bar{display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid #edf0f6;background:#fff}
+.preset-chip{display:inline-flex;align-items:stretch;border:1px solid;border-radius:20px;overflow:hidden}
+.preset-chip button{border:0;background:transparent;font-size:11px;font-weight:700;padding:6px 10px;min-height:34px}
+.preset-chip .preset-box{border-left:1px solid;padding:6px 9px}

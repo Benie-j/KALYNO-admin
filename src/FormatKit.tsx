@@ -344,8 +344,39 @@ export function MathKeyboard({ onInsert }: { onInsert: (tex: string) => void }) 
   );
 }
 
+export type Preset = { id: string; label: string; text: string; bg: string; border: string };
+
+// Mêmes couleurs que l'app (Palette.kt / DesignTokens.kt). Contraste texte/fond >= 4,5 (AA).
+export const PRESETS: Preset[] = [
+  { id: "rule", label: "Règle", text: "#0F766E", bg: "#E6F4F1", border: "#0F766E" },
+  { id: "tip", label: "Astuce", text: "#B45309", bg: "#FEF3C7", border: "#F59E0B" },
+  { id: "pitfall", label: "Piège", text: "#B91C1C", bg: "#FEE2E2", border: "#DC2626" },
+  { id: "example", label: "Exemple", text: "#1D4ED8", bg: "#DBEAFE", border: "#3B82F6" },
+  { id: "result", label: "Résultat", text: "#0B6B4A", bg: "#E2F5EC", border: "#15966A" },
+  { id: "def", label: "Définition", text: "#6D28D9", bg: "#EDE9FE", border: "#8457D9" },
+  { id: "key", label: "À retenir", text: "#9D174D", bg: "#FCE7F3", border: "#DB2777" }
+];
+
+export function PresetBar({ onText, onBox }: { onText: (p: Preset) => void; onBox: (p: Preset) => void }) {
+  return (
+    <div className="preset-bar" role="group" aria-label="Raccourcis de couleur">
+      {PRESETS.map((p, i) => (
+        <span className="preset-chip" key={p.id} style={{ background: p.bg, borderColor: p.border }}>
+          <button type="button" style={{ color: p.text }} title={`${p.label} : colorer la sélection (Alt+${i + 1})`}
+            onMouseDown={e => e.preventDefault()} onClick={() => onText(p)}>{p.label}</button>
+          <button type="button" className="preset-box" style={{ color: p.text, borderColor: p.border }}
+            title={`${p.label} : encadrer le paragraphe (Alt+Maj+${i + 1})`}
+            onMouseDown={e => e.preventDefault()} onClick={() => onBox(p)}>▭</button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 const FAMILIES: { name: string; shades: string[] }[] = [
-  { name: "Bleu KALYNO", shades: ["#EAF0FF", "#C7D8FF", "#8DB0FF", "#4778D8", "#2457C5", "#1C48A8", "#142344"] },
+  { name: "Vert pétrole KALYNO", shades: ["#E6F4F1", "#B8E0DA", "#6FC3B8", "#14B8A6", "#0F766E", "#115E59", "#134E4A"] },
+  { name: "Rouge piège", shades: ["#FEE2E2", "#FECACA", "#F87171", "#DC2626", "#B91C1C", "#991B1B", "#7F1D1D"] },
+  { name: "Bleu", shades: ["#EAF0FF", "#C7D8FF", "#8DB0FF", "#4778D8", "#2457C5", "#1C48A8", "#142344"] },
   { name: "Émeraude", shades: ["#E5F7EE", "#BDEBD6", "#7FD6B0", "#2FB985", "#15966A", "#0B6B4A", "#064430"] },
   { name: "Violet", shades: ["#F1EAFF", "#DCCBFF", "#B999F2", "#9B72E6", "#8457D9", "#6538B8", "#43267F"] },
   { name: "Ambre", shades: ["#FFF5DC", "#FFE7A8", "#FFD066", "#F5B63A", "#D99A1E", "#B7791F", "#7A4F12"] },
