@@ -11,7 +11,7 @@ import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
 import LevelsManager from "./LevelsManager";
 
 type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
-type Subject = { id: string; level_id: string; name: string; emoji: string | null; coefficient: number; position: number; is_active: boolean };
+type Subject = { id: string; level_id: string; name: string; emoji: string | null; icon_key: string | null; coefficient: number; position: number; is_active: boolean };
 type Chapter = { id: string; subject_id: string; title: string; position: number; status: "draft" | "published"; tag?: string | null };
 type Capsule = { id: string; chapter_id: string; title: string; body: string; minutes: number; position: number; kind: string; is_high_yield: boolean };
 type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean };
@@ -20,6 +20,7 @@ type Challenge = { id: string; level_id: string; title: string; position: number
 type Question = { id: string; challenge_id: string; position: number; prompt: string; choices: string[]; correct_index: number; explanation: string | null };
 
 type Section = "overview" | "levels" | "courses" | "banners" | "dojo";
+const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 const KIND_LABEL: Record<string, string> = { intro: "Introduction", text: "Texte", rule: "Règle / formule", tip: "Astuce", pitfall: "Piège à éviter" };
 
 function errorText(error: unknown) {
@@ -73,7 +74,7 @@ export default function App() {
   const loadContent = useCallback(async (activeLevel: string) => {
     if (!activeLevel) { setSubjects([]); setChapters([]); setCapsules([]); setCards([]); return; }
     const { data, error } = await supabase.from("subjects")
-      .select("id,level_id,name,emoji,coefficient,position,is_active")
+      .select("id,level_id,name,emoji,icon_key,coefficient,position,is_active")
       .eq("level_id", activeLevel).order("position");
     if (error) throw error;
     const rows = (data ?? []) as Subject[];
@@ -204,17 +205,19 @@ export default function App() {
 
   async function createSubject() {
     const name = ask("Nom de la discipline"); if (!name || !levelId) return;
-    const emoji = ask("Emoji de la discipline", "📘") || "📘";
+    const icon_key = ask(`Icône de la discipline (${SUBJECT_ICONS.join(", ")})`, "book-open"); if (icon_key === null) return;
+    if (!SUBJECT_ICONS.includes(icon_key)) { tell("Icône inconnue : choisis-en une dans la liste."); return; }
     await runAction(async () => {
-      const { error } = await supabase.from("subjects").insert({ level_id: levelId, name, emoji, position: subjects.length, is_active: true });
+      const { error } = await supabase.from("subjects").insert({ level_id: levelId, name, emoji: "📘", icon_key, position: subjects.length, is_active: true });
       if (error) throw error; await loadContent(levelId);
     }, "Discipline créée.");
   }
   async function editSubject(subject: Subject) {
     const name = ask("Nom de la discipline", subject.name); if (!name) return;
-    const emoji = ask("Emoji", subject.emoji ?? "📘"); if (emoji === null) return;
+    const icon_key = ask(`Icône (${SUBJECT_ICONS.join(", ")})`, subject.icon_key ?? "book-open"); if (icon_key === null) return;
+    if (!SUBJECT_ICONS.includes(icon_key)) { tell("Icône inconnue : choisis-en une dans la liste."); return; }
     await runAction(async () => {
-      const { error } = await supabase.from("subjects").update({ name, emoji: emoji || null }).eq("id", subject.id);
+      const { error } = await supabase.from("subjects").update({ name, icon_key }).eq("id", subject.id);
       if (error) throw error; await loadContent(levelId);
     }, "Discipline mise à jour.");
   }
