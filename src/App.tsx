@@ -9,6 +9,7 @@ import {
 import { supabase } from "./lib/supabase";
 import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
 import LevelsManager from "./LevelsManager";
+import MotivationManager from "./MotivationManager";
 
 type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
 type Subject = { id: string; level_id: string; name: string; emoji: string | null; icon_key: string | null; coefficient: number; position: number; is_active: boolean };
@@ -19,7 +20,7 @@ type Banner = { id: string; title: string; subtitle: string | null; button_label
 type Challenge = { id: string; level_id: string; title: string; position: number; status: "draft" | "published"; kind: "discovery" | "standard" };
 type Question = { id: string; challenge_id: string; position: number; prompt: string; choices: string[]; correct_index: number; explanation: string | null };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "dojo";
+type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "dojo";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 const KIND_LABEL: Record<string, string> = { intro: "Introduction", text: "Texte", rule: "Règle / formule", tip: "Astuce", pitfall: "Piège à éviter" };
 
@@ -502,6 +503,7 @@ export default function App() {
     { id: "levels" as Section, label: "Classes & séries", icon: GraduationCap },
     { id: "courses" as Section, label: "Cours & leçons", icon: BookOpen },
     { id: "banners" as Section, label: "Explorer · À la une", icon: Sparkles },
+    { id: "motivation" as Section, label: "Accueil · Examens & citations", icon: Activity },
     { id: "dojo" as Section, label: "Dojo · Défis", icon: Target }
   ];
 
@@ -554,6 +556,11 @@ export default function App() {
           {section === "levels" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">CATALOGUE OFFICIEL</div><h2>Classes et séries</h2><p>La liste active publiée ici est celle que l’application Android récupère depuis Supabase. Les identifiants sont conservés pour protéger les relations avec les contenus.</p></div><button className="secondary" onClick={()=>void reloadAll()}><RefreshCw size={16}/> Actualiser</button></div>
             <LevelsManager levels={levels} busy={busy} onRefresh={reloadAll} onNotice={setNotice}/>
+          </section>}
+
+          {section === "motivation" && <section className="page">
+            <div className="page-intro"><div><div className="eyebrow">ACCUEIL DE L’APPLICATION</div><h2>Examens et citations</h2><p>La date d’examen alimente le compte à rebours de l’accueil élève ; la citation du jour tourne chaque jour parmi les citations actives.</p></div></div>
+            <MotivationManager levels={levels} busy={busy} onNotice={setNotice}/>
           </section>}
 
           {section === "courses" && <section className="page">
