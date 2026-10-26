@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 22
 
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
 
       - name: Build React application
         run: npm run build
