@@ -279,6 +279,14 @@ export default function CapsuleEditor({
       window.alert("Le contenu pédagogique est obligatoire.");
       return;
     }
+    const broken: string[] = [];
+    const re = /\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(body)) !== null) {
+      const src = plainText(m[1] ?? m[2] ?? "");
+      try { katex.renderToString(src, { throwOnError: true }); } catch { broken.push(src.slice(0, 70)); }
+    }
+    if (broken.length && !window.confirm(`${broken.length} formule(s) invalide(s) :\n\n${broken.join("\n")}\n\nEnregistrer quand même ?`)) return;
     onSave({ title: cleanTitle, body, kind, minutes, is_high_yield: priority });
   }
 
