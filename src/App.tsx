@@ -9,6 +9,7 @@ import {
 import { supabase } from "./lib/supabase";
 import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
 import LevelsManager from "./LevelsManager";
+import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
 
 type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
@@ -20,7 +21,7 @@ type Banner = { id: string; title: string; subtitle: string | null; button_label
 type Challenge = { id: string; level_id: string; title: string; position: number; status: "draft" | "published"; kind: "discovery" | "standard" };
 type Question = { id: string; challenge_id: string; position: number; prompt: string; choices: string[]; correct_index: number; explanation: string | null };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "dojo";
+type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "dojo";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 const KIND_LABEL: Record<string, string> = { intro: "Introduction", text: "Texte", rule: "Règle / formule", tip: "Astuce", pitfall: "Piège à éviter" };
 
@@ -502,6 +503,7 @@ export default function App() {
     { id: "overview" as Section, label: "Vue générale", icon: LayoutDashboard },
     { id: "levels" as Section, label: "Classes & séries", icon: GraduationCap },
     { id: "courses" as Section, label: "Cours & leçons", icon: BookOpen },
+    { id: "themes" as Section, label: "Thèmes · Organisation", icon: ArrowDownUp },
     { id: "banners" as Section, label: "Explorer · À la une", icon: Sparkles },
     { id: "motivation" as Section, label: "Accueil · Examens & citations", icon: Activity },
     { id: "dojo" as Section, label: "Dojo · Défis", icon: Target }
@@ -561,6 +563,15 @@ export default function App() {
           {section === "motivation" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">ACCUEIL DE L’APPLICATION</div><h2>Examens et citations</h2><p>La date d’examen alimente le compte à rebours de l’accueil élève ; la citation du jour tourne chaque jour parmi les citations actives.</p></div></div>
             <MotivationManager levels={levels} busy={busy} onNotice={setNotice}/>
+          </section>}
+
+          {section === "themes" && <section className="page">
+            <div className="page-intro"><div><div className="eyebrow">ORGANISATION DES LEÇONS</div><h2>Thèmes d’une discipline</h2><p>Regroupe les leçons d’une discipline en thèmes. L’élève les voit dans l’Explorer, dans l’ordre des positions.</p></div></div>
+            <div className="selector-row">
+              <label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{levels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
+              <label>Discipline<select value={subjectId} onChange={e=>setSubjectId(e.target.value)}><option value="">Choisir une discipline</option>{subjects.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+            </div>
+            <ThemesManager subjectId={subjectId} busy={busy} onNotice={setNotice}/>
           </section>}
 
           {section === "courses" && <section className="page">
