@@ -130,6 +130,8 @@ export default function CapsuleEditor({
   const [panel, setPanel] = useState<"math" | "color" | null>("math");
   const [tick, setTick] = useState(0);
   const [preview, setPreview] = useState("");
+  const [formError, setFormError] = useState("");
+  const [brokenList, setBrokenList] = useState<string[]>([]);
 
   useEffect(() => {
     if (editorRef.current) editorRef.current.innerHTML = initial.body;
@@ -267,16 +269,16 @@ export default function CapsuleEditor({
     }
   }
 
-  function submit(event: React.FormEvent) {
-    event.preventDefault();
+  function attempt(force: boolean) {
     const cleanTitle = title.trim();
     const body = cleanHtml(editorRef.current?.innerHTML ?? "");
+    setFormError("");
     if (!cleanTitle) {
-      window.alert("Le titre du bloc est obligatoire.");
+      setFormError("Le titre du bloc est obligatoire.");
       return;
     }
     if (!body.replace(/<[^>]*>/g, "").trim()) {
-      window.alert("Le contenu pédagogique est obligatoire.");
+      setFormError("Le contenu pédagogique est obligatoire.");
       return;
     }
     const broken: string[] = [];
@@ -286,8 +288,20 @@ export default function CapsuleEditor({
       const src = plainText(m[1] ?? m[2] ?? "");
       try { katex.renderToString(src, { throwOnError: true }); } catch { broken.push(src.slice(0, 70)); }
     }
-    if (broken.length && !window.confirm(`${broken.length} formule(s) invalide(s) :\n\n${broken.join("\n")}\n\nEnregistrer quand même ?`)) return;
+    if (broken.length && !force) { setBrokenList(broken); return; }
+    setBrokenList([]);
     onSave({ title: cleanTitle, body, kind, minutes, is_high_yield: priority });
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    attempt(false);
+  }
+
+  // Ctrl + Entrée : enregistrer ; Échap : fermer
+  function onFormKey(event: React.KeyboardEvent<HTMLFormElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); attempt(false); }
+    else if (event.key === "Escape") { event.preventDefault(); onCancel(); }
   }
 
   const tool = (label: string, icon: React.ReactNode, action: () => void, on = false) => (
@@ -297,7 +311,7 @@ export default function CapsuleEditor({
 
   return (
     <div className="editor-overlay" role="presentation">
-      <form className="capsule-editor" onSubmit={submit} role="dialog"
+      <form className="capsule-editor" onSubmit={submit} onKeyDown={onFormKey} role="dialog"
         aria-modal="true" aria-labelledby="capsule-editor-title">
         <header className="editor-header">
           <div>
@@ -405,6 +419,15 @@ export default function CapsuleEditor({
             <small>Signaler ce contenu comme important.</small>
           </span>
         </label>
+
+        {formError && <p className="ep-errors" role="alert">{formError}</p>}
+        {brokenList.length > 0 && (
+          <div className="ep-errors" role="alert">
+            <strong>{brokenList.length} formule(s) invalide(s)</strong>
+            <ul>{brokenList.map((b, i) => <li key={i}><code>{b}</code></li>)}</ul>
+            <button type="button" className="secondary" onClick={() => attempt(true)}>Enregistrer quand même</button>
+          </div>
+        )}
 
         <footer className="editor-actions">
           <button type="button" className="secondary" onClick={onCancel}

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Check, CircleAlert, Edit3, Lightbulb, Plus, Rocket, Save, Trash2, X } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import MathField, { MathHtml } from "./MathField";
+import MathPalette from "./MathPalette";
+import { formulaIssues } from "./mathText";
 
 /**
  * Compositeur du PREMIER DÉFI : celui que l'élève reçoit juste après avoir saisi son pseudo.
@@ -51,6 +54,8 @@ function toDraft(q: Q): Draft {
 function problems(d: Draft): string[] {
   const out: string[] = [];
   if (!d.prompt.trim()) out.push("L'énoncé est vide.");
+  const texts_ = [["Énoncé", d.prompt], ["Indice", d.hint], ["Explication", d.explanation], ...(d.kind === "text" ? [] : d.choices.map((c, i) => [`Choix ${String.fromCharCode(65 + i)}`, c]))];
+  for (const [label, value] of texts_) formulaIssues(value).forEach(p => out.push(`${label} : ${p}.`));
   if (d.kind === "text") {
     if (!d.answers.split("\n").some(x => x.trim())) out.push("Ajoute au moins une réponse acceptée.");
     return out;
@@ -401,10 +406,10 @@ export default function FirstChallengeComposer({ levels, levelId, onLevelChange,
                           <button className="text-icon" title="Modifier" onClick={() => openEdit(q)} disabled={busy}><Edit3 size={14} /></button>
                           <button className="text-icon danger" title="Supprimer" onClick={() => void removeQuestion(q)} disabled={busy}><Trash2 size={14} /></button>
                         </div>
-                        <strong>{q.prompt}</strong>
+                        <strong><MathHtml text={q.prompt} /></strong>
                         {d.kind === "text"
                           ? <p className="fc-answer">Réponse : {d.answers.split("\n").join(" · ") || "—"}</p>
-                          : <div className="choice-list">{d.choices.map((c, j) => <span key={j} className={d.correct.includes(j) ? "correct-choice" : ""}>{String.fromCharCode(65 + j)}. {c}{d.correct.includes(j) && <Check size={13} />}</span>)}</div>}
+                          : <div className="choice-list">{d.choices.map((c, j) => <span key={j} className={d.correct.includes(j) ? "correct-choice" : ""}>{String.fromCharCode(65 + j)}. <MathHtml text={c} />{d.correct.includes(j) && <Check size={13} />}</span>)}</div>}
                       </article>
                     );
                   })}
@@ -420,8 +425,10 @@ export default function FirstChallengeComposer({ levels, levelId, onLevelChange,
                       ))}
                     </div>
 
+                    <MathPalette />
+
                     <label className="fc-field">Énoncé
-                      <textarea rows={3} value={draft.prompt} onChange={e => patch({ prompt: e.target.value })} placeholder="Pose ta question à l'élève" />
+                      <MathField value={draft.prompt} onChange={v => patch({ prompt: v })} rows={3} placeholder="Pose ta question. Une formule : Alt+M, ou $x^2$" ariaLabel="Énoncé" autoFocus />
                     </label>
 
                     {draft.kind === "text" ? (
@@ -443,7 +450,7 @@ export default function FirstChallengeComposer({ levels, levelId, onLevelChange,
                                 aria-label={`Choix ${String.fromCharCode(65 + i)} correct`}
                               />
                               <b>{String.fromCharCode(65 + i)}</b>
-                              <input className="fc-input" value={c} onChange={e => setChoice(i, e.target.value)} placeholder={`Choix ${String.fromCharCode(65 + i)}`} />
+                              <MathField value={c} onChange={v => setChoice(i, v)} single placeholder={`Choix ${String.fromCharCode(65 + i)}`} ariaLabel={`Choix ${String.fromCharCode(65 + i)}`} />
                               <button type="button" className="text-icon" title="Supprimer le choix" onClick={() => removeChoice(i)} disabled={draft.choices.length <= MIN_CHOICES}><X size={14} /></button>
                             </div>
                           ))}
@@ -453,10 +460,10 @@ export default function FirstChallengeComposer({ levels, levelId, onLevelChange,
                     )}
 
                     <label className="fc-field">Indice (facultatif)
-                      <input className="fc-input" value={draft.hint} onChange={e => patch({ hint: e.target.value })} placeholder="Affiché seulement si l'élève le demande" />
+                      <MathField value={draft.hint} onChange={v => patch({ hint: v })} single placeholder="Affiché seulement si l'élève le demande" ariaLabel="Indice" />
                     </label>
                     <label className="fc-field">Explication (facultatif)
-                      <textarea rows={3} value={draft.explanation} onChange={e => patch({ explanation: e.target.value })} placeholder={"Affichée après la validation.\nUne étape par ligne."} />
+                      <MathField value={draft.explanation} onChange={v => patch({ explanation: v })} rows={3} placeholder={"Affichée après la validation.\nUne étape par ligne."} ariaLabel="Explication" />
                     </label>
 
                     {draftIssues.length > 0 && <ul className="fc-issues">{draftIssues.map(p => <li key={p}>{p}</li>)}</ul>}
@@ -500,10 +507,10 @@ function Preview({ draft, title, fromEditor }: { draft: Draft | null; title: str
       <div className="fc-card">
         <span className="fc-pill">{KIND_PILL[draft.kind]}</span>
         <small className="fc-ctx">{title}</small>
-        <p className="fc-prompt">{draft.prompt || "Ton énoncé apparaîtra ici."}</p>
+        <p className="fc-prompt">{draft.prompt ? <MathHtml text={draft.prompt} /> : "Ton énoncé apparaîtra ici."}</p>
 
         {draft.hint.trim() && (hint
-          ? <div className="fc-hint"><Lightbulb size={15} /> {draft.hint}</div>
+          ? <div className="fc-hint"><Lightbulb size={15} /> <MathHtml text={draft.hint} /></div>
           : <button className="fc-hint-btn" onClick={() => setHint(true)}><Lightbulb size={14} /> Voir un indice</button>)}
 
         {draft.kind === "text" ? (
@@ -514,7 +521,7 @@ function Preview({ draft, title, fromEditor }: { draft: Draft | null; title: str
             {draft.choices.map((c, i) => (
               <div key={i} className={`fc-opt ${correction && draft.correct.includes(i) ? "right" : ""}`}>
                 <span className={`fc-badge ${multiple ? "sq" : ""}`}>{correction && draft.correct.includes(i) ? "✓" : String.fromCharCode(65 + i)}</span>
-                <span>{c || `Choix ${String.fromCharCode(65 + i)}`}</span>
+                <span>{c ? <MathHtml text={c} /> : `Choix ${String.fromCharCode(65 + i)}`}</span>
               </div>
             ))}
           </div>
@@ -524,8 +531,8 @@ function Preview({ draft, title, fromEditor }: { draft: Draft | null; title: str
       {correction && (
         <div className="fc-card fc-corr">
           <b>BONNE RÉPONSE</b>
-          <p className="fc-good">{draft.kind === "text" ? answers[0] ?? "—" : goodText || "—"}</p>
-          {steps.length > 0 && <><b className="fc-expl">EXPLICATION</b>{steps.map((s, i) => <p key={i}>{steps.length > 1 ? `${i + 1}. ` : ""}{s}</p>)}</>}
+          <p className="fc-good">{draft.kind === "text" ? answers[0] ?? "—" : goodText ? <MathHtml text={goodText} /> : "—"}</p>
+          {steps.length > 0 && <><b className="fc-expl">EXPLICATION</b>{steps.map((s, i) => <p key={i}>{steps.length > 1 ? `${i + 1}. ` : ""}<MathHtml text={s} /></p>)}</>}
         </div>
       )}
 

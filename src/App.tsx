@@ -12,6 +12,8 @@ import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
 import FirstChallengeComposer from "./FirstChallengeComposer";
+import EntryPage, { type EntrySpec, type FieldDef, type Values } from "./EntryPage";
+import { MathHtml } from "./MathField";
 
 type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
 type Subject = { id: string; level_id: string; name: string; emoji: string | null; icon_key: string | null; coefficient: number; position: number; is_active: boolean };
@@ -30,11 +32,32 @@ function errorText(error: unknown) {
   if (error && typeof error === "object" && "message" in error) return String((error as {message: unknown}).message);
   return String(error ?? "Une erreur inconnue est survenue.");
 }
-function ask(label: string, initial = ""): string | null {
-  const value = window.prompt(label, initial);
-  return value === null ? null : value.trim();
-}
-function tell(message: string) { window.alert(message); }
+const ICON_LABEL: Record<string, string> = { "backpack": "Cartable", "graduation-cap": "Toque de diplômé", "book-open": "Livre ouvert", "pen-line": "Stylo", "calculator": "Calculatrice", "flask-conical": "Fiole", "globe": "Globe", "brain": "Cerveau", "layers": "Calques", "target": "Cible", "lightbulb": "Ampoule", "rocket": "Fusée", "trophy": "Trophée", "dumbbell": "Haltère" };
+const ICON_OPTIONS = SUBJECT_ICONS.map(value => ({ value, label: `${ICON_LABEL[value] ?? value} (${value})` }));
+const str = (value: string | string[] | undefined) => String(Array.isArray(value) ? value[0] ?? "" : value ?? "").trim();
+const strings = (value: string | string[] | undefined, count: number) => Array.from({ length: count }, (_, i) => (Array.isArray(value) ? value[i] ?? "" : ""));
+
+
+const cardFields = (withKind: boolean, count: number): FieldDef[] => [
+  ...(withKind ? [{ kind: "select" as const, key: "kind", label: "Type de carte", options: [
+    { value: "qcm", label: "QCM : une question et des choix" },
+    { value: "flashcard", label: "Flashcard : recto / verso" },
+    { value: "cloze", label: "Texte à compléter : réponse attendue" }
+  ] }] : []),
+  { kind: "math", key: "front", label: "Question / recto", required: true, rows: 3, preview: "title" },
+  { kind: "choices", key: "choices", label: "Choix de réponse", count, correctKey: "correct", when: v => v.kind === "qcm" },
+  { kind: "math", key: "back", label: "Réponse / complément (facultatif)", rows: 2, when: v => v.kind === "qcm" },
+  { kind: "math", key: "back", label: "Verso / réponse", required: true, rows: 2, when: v => v.kind === "flashcard" },
+  { kind: "math", key: "back", label: "Texte complété / réponse attendue", required: true, rows: 2, when: v => v.kind === "cloze" },
+  { kind: "math", key: "explanation", label: "Explication de la réponse (facultatif)", rows: 3 }
+];
+
+
+const questionFields: FieldDef[] = [
+  { kind: "math", key: "prompt", label: "Énoncé de la question", required: true, rows: 3, preview: "title" },
+  { kind: "choices", key: "choices", label: "Choix de réponse", count: 4, correctKey: "correct" },
+  { kind: "math", key: "explanation", label: "Explication (facultatif)", rows: 3 }
+];
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -59,6 +82,7 @@ export default function App() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [searchText, setSearchText] = useState("");
   const [counts, setCounts] = useState({ subjects: 0, chapters: 0, capsules: 0, cards: 0, challenges: 0, students: 0 });
+  const [entry, setEntry] = useState<EntrySpec | null>(null);
   const [capsuleEditor, setCapsuleEditor] = useState<{ capsule: Capsule | null } | null>(null);
 
   const currentLevel = levels.find(x => x.id === levelId);
@@ -206,23 +230,43 @@ export default function App() {
     finally { setBusy(false); }
   }
 
-  async function createSubject() {
-    const name = ask("Nom de la discipline"); if (!name || !levelId) return;
-    const icon_key = ask(`Icône de la discipline (${SUBJECT_ICONS.join(", ")})`, "book-open"); if (icon_key === null) return;
-    if (!SUBJECT_ICONS.includes(icon_key)) { tell("Icône inconnue : choisis-en une dans la liste."); return; }
-    await runAction(async () => {
-      const { error } = await supabase.from("subjects").insert({ level_id: levelId, name, emoji: "📘", icon_key, position: subjects.length, is_active: true });
-      if (error) throw error; await loadContent(levelId);
-    }, "Discipline créée.");
+  // Enregistrement depuis la page de saisie : renvoie le message d'erreur (la page reste ouverte) ou null.
+  async function save(action: () => Promise<void>, success: string): Promise<string | null> {
+    setBusy(true); setNotice("");
+    try { await action(); setNotice(success); await refreshCounts(); return null; }
+    catch (e) { return errorText(e); }
+    finally { setBusy(false); }
   }
-  async function editSubject(subject: Subject) {
-    const name = ask("Nom de la discipline", subject.name); if (!name) return;
-    const icon_key = ask(`Icône (${SUBJECT_ICONS.join(", ")})`, subject.icon_key ?? "book-open"); if (icon_key === null) return;
-    if (!SUBJECT_ICONS.includes(icon_key)) { tell("Icône inconnue : choisis-en une dans la liste."); return; }
-    await runAction(async () => {
-      const { error } = await supabase.from("subjects").update({ name, icon_key }).eq("id", subject.id);
-      if (error) throw error; await loadContent(levelId);
-    }, "Discipline mise à jour.");
+
+  function createSubject() {
+    if (!levelId) return;
+    setEntry({
+      eyebrow: "DISCIPLINE", title: "Nouvelle discipline", submitLabel: "Créer la discipline",
+      intro: `Classe : ${currentLevel?.label ?? "—"}`,
+      fields: [
+        { kind: "text", key: "name", label: "Nom de la discipline", required: true, max: 60, placeholder: "Ex. : Mathématiques", preview: "title" },
+        { kind: "select", key: "icon_key", label: "Icône", options: ICON_OPTIONS }
+      ],
+      initial: { name: "", icon_key: "book-open" },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("subjects").insert({ level_id: levelId, name: str(v.name), emoji: "📘", icon_key: str(v.icon_key), position: subjects.length, is_active: true });
+        if (error) throw error; await loadContent(levelId);
+      }, "Discipline créée.")
+    });
+  }
+  function editSubject(subject: Subject) {
+    setEntry({
+      eyebrow: "DISCIPLINE", title: "Modifier la discipline", submitLabel: "Enregistrer",
+      fields: [
+        { kind: "text", key: "name", label: "Nom de la discipline", required: true, max: 60, preview: "title" },
+        { kind: "select", key: "icon_key", label: "Icône", options: ICON_OPTIONS }
+      ],
+      initial: { name: subject.name, icon_key: subject.icon_key && SUBJECT_ICONS.includes(subject.icon_key) ? subject.icon_key : "book-open" },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("subjects").update({ name: str(v.name), icon_key: str(v.icon_key) }).eq("id", subject.id);
+        if (error) throw error; await loadContent(levelId);
+      }, "Discipline mise à jour.")
+    });
   }
   async function deleteSubject(subject: Subject) {
     if (!confirm(`Supprimer « ${subject.name} » et ses chapitres, blocs et cartes ?`)) return;
@@ -231,22 +275,35 @@ export default function App() {
       if (error) throw error; setSubjectId(""); await loadContent(levelId);
     }, "Discipline supprimée.");
   }
-  async function createChapter() {
-    const title = ask("Titre du chapitre"); if (!title || !subjectId) return;
-    const tag = ask("Smart Tag (laisser vide si aucun)", "") ;
-    if (tag === null) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("chapters").insert({ subject_id: subjectId, title, tag: tag || null, position: chapters.length, status: "draft" });
-      if (error) throw error; await loadChapters(subjectId);
-    }, "Chapitre créé en brouillon.");
+  function createChapter() {
+    if (!subjectId) return;
+    setEntry({
+      eyebrow: "CHAPITRE", title: "Nouveau chapitre", submitLabel: "Créer le chapitre",
+      intro: "Le chapitre est créé en brouillon : tu le publieras quand il sera prêt.",
+      fields: [
+        { kind: "math", key: "title", label: "Titre du chapitre", required: true, single: true, placeholder: "Ex. : Équations du premier degré", preview: "title" },
+        { kind: "text", key: "tag", label: "Smart Tag (facultatif)", max: 60, help: "Laisse vide s'il n'y en a pas." }
+      ],
+      initial: { title: "", tag: "" },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("chapters").insert({ subject_id: subjectId, title: str(v.title), tag: str(v.tag) || null, position: chapters.length, status: "draft" });
+        if (error) throw error; await loadChapters(subjectId);
+      }, "Chapitre créé en brouillon.")
+    });
   }
-  async function editChapter(chapter: Chapter) {
-    const title = ask("Titre du chapitre", chapter.title); if (!title) return;
-    const tag = ask("Smart Tag", chapter.tag ?? ""); if (tag === null) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("chapters").update({ title, tag: tag || null }).eq("id", chapter.id);
-      if (error) throw error; await loadChapters(subjectId);
-    }, "Chapitre mis à jour.");
+  function editChapter(chapter: Chapter) {
+    setEntry({
+      eyebrow: "CHAPITRE", title: "Modifier le chapitre", submitLabel: "Enregistrer",
+      fields: [
+        { kind: "math", key: "title", label: "Titre du chapitre", required: true, single: true, preview: "title" },
+        { kind: "text", key: "tag", label: "Smart Tag (facultatif)", max: 60 }
+      ],
+      initial: { title: chapter.title, tag: chapter.tag ?? "" },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("chapters").update({ title: str(v.title), tag: str(v.tag) || null }).eq("id", chapter.id);
+        if (error) throw error; await loadChapters(subjectId);
+      }, "Chapitre mis à jour.")
+    });
   }
   async function toggleChapter(chapter: Chapter) {
     const status = chapter.status === "published" ? "draft" : "published";
@@ -315,43 +372,42 @@ export default function App() {
       if (error) throw error; await loadLesson(chapterId);
     }, "Bloc supprimé.");
   }
-  async function createCard() {
+  function createCard() {
     if (!chapterId) return;
-    const kind = ask("Type de carte : qcm, flashcard ou cloze", "qcm");
-    if (!kind || !["qcm","flashcard","cloze"].includes(kind)) { tell("Type de carte invalide."); return; }
-    const front = ask("Question / recto"); if (!front) return;
-    let back: string | null = null, choices: string[] | null = null, correct_index: number | null = null;
-    if (kind === "qcm") {
-      const c1 = ask("Choix A"); if (!c1) return;
-      const c2 = ask("Choix B"); if (!c2) return;
-      const c3 = ask("Choix C"); if (!c3) return;
-      const c4 = ask("Choix D"); if (!c4) return;
-      choices = [c1,c2,c3,c4];
-      const answer = Number(ask("Réponse correcte : 1, 2, 3 ou 4", "1"));
-      if (![1,2,3,4].includes(answer)) { tell("Réponse correcte invalide."); return; }
-      correct_index = answer - 1;
-      back = ask("Réponse / complément (facultatif)", "") || null;
-    } else {
-      back = ask(kind === "cloze" ? "Texte complété / réponse attendue" : "Verso / réponse"); if (!back) return;
-    }
-    const explanation = ask("Explication de la réponse (facultatif)", "");
     const capsule_id = capsules[0]?.id ?? null;
-    await runAction(async () => {
-      const { error } = await supabase.from("cards").insert({
-        chapter_id: chapterId, capsule_id, kind, front, back, choices, correct_index,
-        explanation: explanation || null, position: cards.length
-      });
-      if (error) throw error; await loadLesson(chapterId);
-    }, "Carte créée.");
+    setEntry({
+      eyebrow: "CARTE · DOJO", title: "Nouvelle carte", submitLabel: "Créer la carte",
+      intro: "Les formules LaTeX s'écrivent entre $ … $ (Alt+M). L'élève les voit rendues dans l'app.",
+      fields: cardFields(true, 4),
+      initial: { kind: "qcm", front: "", choices: ["", "", "", ""], correct: "0", back: "", explanation: "" },
+      onSubmit: v => save(async () => {
+        const kind = str(v.kind);
+        const isQcm = kind === "qcm";
+        const { error } = await supabase.from("cards").insert({
+          chapter_id: chapterId, capsule_id, kind, front: str(v.front), back: str(v.back) || null,
+          choices: isQcm ? strings(v.choices, 4).map(x => x.trim()) : null, correct_index: isQcm ? Number(str(v.correct)) : null,
+          explanation: str(v.explanation) || null, position: cards.length
+        });
+        if (error) throw error; await loadLesson(chapterId);
+      }, "Carte créée.")
+    });
   }
-  async function editCard(card: Card) {
-    const front = ask("Question / recto", card.front); if (!front) return;
-    const back = ask("Verso / réponse", card.back ?? ""); if (back === null) return;
-    const explanation = ask("Explication", card.explanation ?? ""); if (explanation === null) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("cards").update({ front, back: back || null, explanation: explanation || null }).eq("id", card.id);
-      if (error) throw error; await loadLesson(chapterId);
-    }, "Carte mise à jour.");
+  function editCard(card: Card) {
+    const count = Math.max(4, card.choices?.length ?? 4);
+    setEntry({
+      eyebrow: "CARTE · DOJO", title: "Modifier la carte", submitLabel: "Enregistrer",
+      intro: `Type : ${card.kind.toUpperCase()}`,
+      fields: cardFields(false, count),
+      initial: { kind: card.kind, front: card.front, choices: strings(card.choices ?? [], count), correct: String(card.correct_index ?? 0), back: card.back ?? "", explanation: card.explanation ?? "" },
+      onSubmit: v => save(async () => {
+        const isQcm = card.kind === "qcm";
+        const { error } = await supabase.from("cards").update({
+          front: str(v.front), back: str(v.back) || null, explanation: str(v.explanation) || null,
+          ...(isQcm ? { choices: strings(v.choices, count).map(x => x.trim()), correct_index: Number(str(v.correct)) } : {})
+        }).eq("id", card.id);
+        if (error) throw error; await loadLesson(chapterId);
+      }, "Carte mise à jour.")
+    });
   }
   async function deleteCard(card: Card) {
     if (!confirm("Supprimer cette carte ?")) return;
@@ -360,31 +416,36 @@ export default function App() {
       if (error) throw error; await loadLesson(chapterId);
     }, "Carte supprimée.");
   }
-  async function createBanner() {
-    const title = ask("Titre de la bannière"); if (!title) return;
-    const subtitle = ask("Sous-titre (facultatif)", ""); if (subtitle === null) return;
-    const button_label = ask("Texte du bouton (facultatif)", "Découvrir"); if (button_label === null) return;
-    const target = ask("Classe cible : saisir l'identifiant exact, ou laisser vide pour toutes les classes", levelId);
-    if (target === null) return;
-    const chapter = ask("ID du chapitre à ouvrir (facultatif)", chapterId); if (chapter === null) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("explorer_banners").insert({
-        title, subtitle: subtitle || null, button_label: button_label || null,
-        level_id: target || null, chapter_id: chapter || null, position: banners.length, is_active: false
-      });
-      if (error) throw error; await loadBanners();
-    }, "Bannière enregistrée en brouillon.");
+  function createBanner() {
+    setEntry(bannerSpec(null));
   }
-  async function editBanner(banner: Banner) {
-    const title = ask("Titre de la bannière", banner.title); if (!title) return;
-    const subtitle = ask("Sous-titre", banner.subtitle ?? ""); if (subtitle === null) return;
-    const button_label = ask("Texte du bouton", banner.button_label ?? ""); if (button_label === null) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("explorer_banners").update({
-        title, subtitle: subtitle || null, button_label: button_label || null, updated_at: new Date().toISOString()
-      }).eq("id", banner.id);
-      if (error) throw error; await loadBanners();
-    }, "Bannière mise à jour.");
+  function editBanner(banner: Banner) {
+    setEntry(bannerSpec(banner));
+  }
+  function bannerSpec(banner: Banner | null): EntrySpec {
+    const chapterOptions = [{ value: "", label: "Aucune destination" }, ...chapters.map(c => ({ value: c.id, label: c.title }))];
+    if (banner?.chapter_id && !chapterOptions.some(o => o.value === banner.chapter_id)) chapterOptions.push({ value: banner.chapter_id, label: "Chapitre déjà associé" });
+    return {
+      eyebrow: "BANNIÈRE EXPLORER", title: banner ? "Modifier la bannière" : "Nouvelle bannière", submitLabel: banner ? "Enregistrer" : "Créer la bannière",
+      intro: banner ? undefined : "La bannière est créée en brouillon : active-la quand elle est prête.",
+      fields: [
+        { kind: "text", key: "title", label: "Titre de la bannière", required: true, max: 80, preview: "title" },
+        { kind: "text", key: "subtitle", label: "Sous-titre (facultatif)", max: 140 },
+        { kind: "text", key: "button_label", label: "Texte du bouton (facultatif)", max: 30 },
+        { kind: "select", key: "level_id", label: "Classe cible", options: [{ value: "", label: "Toutes les classes" }, ...levels.map(l => ({ value: l.id, label: l.label }))] },
+        { kind: "select", key: "chapter_id", label: "Chapitre à ouvrir", options: chapterOptions, help: "Seuls les chapitres de la discipline sélectionnée sont proposés." }
+      ],
+      initial: banner
+        ? { title: banner.title, subtitle: banner.subtitle ?? "", button_label: banner.button_label ?? "", level_id: banner.level_id ?? "", chapter_id: banner.chapter_id ?? "" }
+        : { title: "", subtitle: "", button_label: "Découvrir", level_id: levelId, chapter_id: chapterId },
+      onSubmit: v => save(async () => {
+        const values = { title: str(v.title), subtitle: str(v.subtitle) || null, button_label: str(v.button_label) || null, level_id: str(v.level_id) || null, chapter_id: str(v.chapter_id) || null };
+        const { error } = banner
+          ? await supabase.from("explorer_banners").update({ ...values, updated_at: new Date().toISOString() }).eq("id", banner.id)
+          : await supabase.from("explorer_banners").insert({ ...values, position: banners.length, is_active: false });
+        if (error) throw error; await loadBanners();
+      }, banner ? "Bannière mise à jour." : "Bannière enregistrée en brouillon.")
+    };
   }
   async function toggleBanner(banner: Banner) {
     await runAction(async () => {
@@ -399,25 +460,39 @@ export default function App() {
       if (error) throw error; await loadBanners();
     }, "Bannière supprimée.");
   }
-  async function createChallenge() {
-    const title = ask("Titre du défi"); if (!title || !levelId) return;
-    const kind = ask("Type : discovery (défi de découverte) ou standard", "standard");
-    if (!kind || !["discovery","standard"].includes(kind)) { tell("Type de défi invalide."); return; }
-    await runAction(async () => {
-      const { error } = await supabase.from("challenges").insert({ level_id: levelId, title, kind, position: challenges.length + 1, status: "draft" });
-      if (error) throw error; await loadChallenges(levelId);
-    }, "Défi créé en brouillon.");
+  function createChallenge() {
+    if (!levelId) return;
+    setEntry({
+      eyebrow: "DOJO", title: "Nouveau défi", submitLabel: "Créer le défi",
+      intro: `Classe : ${currentLevel?.label ?? "—"}. Le défi est créé en brouillon.`,
+      fields: [
+        { kind: "math", key: "title", label: "Titre du défi", required: true, single: true, placeholder: "Ex. : Ton premier défi", preview: "title" },
+        { kind: "select", key: "kind", label: "Type de défi", options: [
+          { value: "standard", label: "Défi standard" },
+          { value: "discovery", label: "Défi de découverte (premier défi après le pseudo)" }
+        ], help: "Le premier défi se compose plus confortablement dans la section « Premier défi »." }
+      ],
+      initial: { title: "", kind: "standard" },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("challenges").insert({ level_id: levelId, title: str(v.title), kind: str(v.kind), position: challenges.length + 1, status: "draft" });
+        if (error) throw error; await loadChallenges(levelId);
+      }, "Défi créé en brouillon.")
+    });
   }
-  async function editChallenge(challenge: Challenge) {
-    const title = ask("Titre du défi", challenge.title); if (!title) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("challenges").update({ title }).eq("id", challenge.id);
-      if (error) throw error; await loadChallenges(levelId);
-    }, "Défi mis à jour.");
+  function editChallenge(challenge: Challenge) {
+    setEntry({
+      eyebrow: "DOJO", title: "Modifier le défi", submitLabel: "Enregistrer",
+      fields: [{ kind: "math", key: "title", label: "Titre du défi", required: true, single: true, preview: "title" }],
+      initial: { title: challenge.title },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("challenges").update({ title: str(v.title) }).eq("id", challenge.id);
+        if (error) throw error; await loadChallenges(levelId);
+      }, "Défi mis à jour.")
+    });
   }
   async function toggleChallenge(challenge: Challenge) {
     const status = challenge.status === "published" ? "draft" : "published";
-    if (status === "published" && !questions.length && challenge.id === challengeId) { tell("Ajoute au moins une question avant de publier ce défi."); return; }
+    if (status === "published" && !questions.length && challenge.id === challengeId) { setNotice("Échec : ajoute au moins une question avant de publier ce défi."); return; }
     if (status === "published" && !confirm("Publier ce défi pour les élèves ?")) return;
     await runAction(async () => {
       const { error } = await supabase.from("challenges").update({ status }).eq("id", challenge.id);
@@ -431,38 +506,34 @@ export default function App() {
       if (error) throw error; setChallengeId(""); await loadChallenges(levelId);
     }, "Défi supprimé.");
   }
-  async function createQuestion() {
+  function createQuestion() {
     if (!challengeId) return;
-    const prompt = ask("Énoncé de la question"); if (!prompt) return;
-    const choices: string[] = [];
-    for (const letter of ["A","B","C","D"]) {
-      const choice = ask(`Choix ${letter}`); if (!choice) return; choices.push(choice);
-    }
-    const correct = Number(ask("Réponse correcte : 1, 2, 3 ou 4", "1"));
-    if (![1,2,3,4].includes(correct)) { tell("Réponse correcte invalide."); return; }
-    const explanation = ask("Explication (facultatif)", "");
-    await runAction(async () => {
-      const { error } = await supabase.from("questions").insert({
-        challenge_id: challengeId, position: questions.length + 1, prompt, choices,
-        correct_index: correct - 1, explanation: explanation || null
-      });
-      if (error) throw error; await loadQuestions(challengeId);
-    }, "Question ajoutée.");
+    setEntry({
+      eyebrow: "DOJO · QUESTION", title: "Nouvelle question", submitLabel: "Ajouter la question",
+      intro: `Défi : ${currentChallenge?.title ?? "—"}`,
+      fields: questionFields,
+      initial: { prompt: "", choices: ["", "", "", ""], correct: "0", explanation: "" },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("questions").insert({
+          challenge_id: challengeId, position: questions.length + 1, prompt: str(v.prompt), choices: strings(v.choices, 4).map(x => x.trim()),
+          correct_index: Number(str(v.correct)), explanation: str(v.explanation) || null
+        });
+        if (error) throw error; await loadQuestions(challengeId);
+      }, "Question ajoutée.")
+    });
   }
-  async function editQuestion(question: Question) {
-    const prompt = ask("Énoncé de la question", question.prompt); if (!prompt) return;
-    const choices: string[] = [];
-    for (let i=0;i<4;i++) {
-      const choice = ask(`Choix ${String.fromCharCode(65+i)}`, question.choices[i] ?? "");
-      if (!choice) return; choices.push(choice);
-    }
-    const correct = Number(ask("Réponse correcte : 1, 2, 3 ou 4", String(question.correct_index + 1)));
-    if (![1,2,3,4].includes(correct)) { tell("Réponse correcte invalide."); return; }
-    const explanation = ask("Explication", question.explanation ?? ""); if (explanation === null) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("questions").update({ prompt, choices, correct_index: correct - 1, explanation: explanation || null }).eq("id", question.id);
-      if (error) throw error; await loadQuestions(challengeId);
-    }, "Question mise à jour.");
+  function editQuestion(question: Question) {
+    setEntry({
+      eyebrow: "DOJO · QUESTION", title: "Modifier la question", submitLabel: "Enregistrer",
+      fields: questionFields,
+      initial: { prompt: question.prompt, choices: strings(question.choices, 4), correct: String(question.correct_index), explanation: question.explanation ?? "" },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("questions").update({
+          prompt: str(v.prompt), choices: strings(v.choices, 4).map(x => x.trim()), correct_index: Number(str(v.correct)), explanation: str(v.explanation) || null
+        }).eq("id", question.id);
+        if (error) throw error; await loadQuestions(challengeId);
+      }, "Question mise à jour.")
+    });
   }
   async function deleteQuestion(question: Question) {
     if (!confirm("Supprimer cette question ?")) return;
@@ -591,7 +662,7 @@ export default function App() {
               </div>
               <div className="panel">
                 <div className="panel-heading"><div><h3>Chapitres</h3><p>{currentSubject?.name ?? "Sélectionne une discipline"}</p></div><button className="small-primary" onClick={()=>void createChapter()} disabled={!subjectId}><Plus size={15}/> Ajouter</button></div>
-                {chapters.length===0?<Empty text="Crée un chapitre pour commencer."/>:<div className="item-list">{visibleChapters.map((chapter,i)=><div key={chapter.id} className={`chapter-row ${chapter.id===chapterId?"selected":""}`}><button className="chapter-select" onClick={()=>setChapterId(chapter.id)}><span className="chapter-number">{String(i+1).padStart(2,"0")}</span><span className="chapter-title"><strong>{chapter.title}</strong><small>{chapter.tag||"Sans Smart Tag"}</small></span><Status status={chapter.status}/></button><div className="row-actions"><button title="Modifier" onClick={()=>void editChapter(chapter)}>✎</button><button title={chapter.status==="published"?"Dépublier":"Publier"} onClick={()=>void toggleChapter(chapter)}>{chapter.status==="published"?<X size={14}/>:<Check size={14}/>}</button><button title="Supprimer" onClick={()=>void deleteChapter(chapter)}><Trash2 size={14}/></button></div></div>)}</div>}
+                {chapters.length===0?<Empty text="Crée un chapitre pour commencer."/>:<div className="item-list">{visibleChapters.map((chapter,i)=><div key={chapter.id} className={`chapter-row ${chapter.id===chapterId?"selected":""}`}><button className="chapter-select" onClick={()=>setChapterId(chapter.id)}><span className="chapter-number">{String(i+1).padStart(2,"0")}</span><span className="chapter-title"><strong><MathHtml text={chapter.title}/></strong><small>{chapter.tag||"Sans Smart Tag"}</small></span><Status status={chapter.status}/></button><div className="row-actions"><button title="Modifier" onClick={()=>void editChapter(chapter)}>✎</button><button title={chapter.status==="published"?"Dépublier":"Publier"} onClick={()=>void toggleChapter(chapter)}>{chapter.status==="published"?<X size={14}/>:<Check size={14}/>}</button><button title="Supprimer" onClick={()=>void deleteChapter(chapter)}><Trash2 size={14}/></button></div></div>)}</div>}
               </div>
             </div>
             <div className="panel lesson-panel">
@@ -600,7 +671,7 @@ export default function App() {
                 <div className="content-subhead"><h4>Blocs pédagogiques <span>{capsules.length}</span></h4><small>Ordre de présentation de la leçon</small></div>
                 {capsules.length===0?<Empty text="Aucun bloc. Ajoute une introduction, une explication, une règle ou une astuce."/>:<div className="capsule-grid">{capsules.map((capsule,i)=><article className="capsule-card" key={capsule.id}><div className="capsule-top"><span className="capsule-index">{String(i+1).padStart(2,"0")}</span><span className="kind-pill">{KIND_LABEL[capsule.kind]??capsule.kind}</span><button className="text-icon" onClick={()=>void editCapsule(capsule)} title="Modifier">✎</button><button className="text-icon danger" onClick={()=>void deleteCapsule(capsule)} title="Supprimer"><Trash2 size={14}/></button></div><h4>{capsule.title}</h4><p>{capsule.body||"Aucun texte dans ce bloc."}</p><div className="capsule-footer"><span>{capsule.minutes} min</span><span>{capsule.is_high_yield?"Prioritaire":"Bloc de leçon"}</span></div></article>)}</div>}
                 <div className="content-subhead"><h4>Cartes et exercices <span>{cards.length}</span></h4><small>QCM, flashcards et textes à trous</small></div>
-                {cards.length===0?<Empty text="Aucune carte ni exercice dans ce chapitre."/>:<div className="table-wrap"><table><thead><tr><th>Type</th><th>Énoncé / recto</th><th>Réponse</th><th></th></tr></thead><tbody>{cards.map(card=><tr key={card.id}><td><span className="kind-pill">{card.kind.toUpperCase()}</span></td><td className="question-cell">{card.front}</td><td>{card.kind==="qcm"&&card.choices?card.choices[card.correct_index??0]:card.back??"—"}</td><td className="table-actions"><button onClick={()=>void editCard(card)} title="Modifier">✎</button><button onClick={()=>void deleteCard(card)} title="Supprimer"><Trash2 size={14}/></button></td></tr>)}</tbody></table></div>}
+                {cards.length===0?<Empty text="Aucune carte ni exercice dans ce chapitre."/>:<div className="table-wrap"><table><thead><tr><th>Type</th><th>Énoncé / recto</th><th>Réponse</th><th></th></tr></thead><tbody>{cards.map(card=><tr key={card.id}><td><span className="kind-pill">{card.kind.toUpperCase()}</span></td><td className="question-cell"><MathHtml text={card.front}/></td><td><MathHtml text={card.kind==="qcm"&&card.choices?card.choices[card.correct_index??0]??"—":card.back??"—"}/></td><td className="table-actions"><button onClick={()=>void editCard(card)} title="Modifier">✎</button><button onClick={()=>void deleteCard(card)} title="Supprimer"><Trash2 size={14}/></button></td></tr>)}</tbody></table></div>}
               </>}
             </div>
           </section>}
@@ -617,9 +688,10 @@ export default function App() {
             <div className="page-intro"><div><div className="eyebrow">ENTRAÎNEMENT & QCM</div><h2>Préparer les défis du Dojo</h2><p>Les défis publiés sont chargés par l’application Android selon la classe de l’élève.</p></div><button className="primary" onClick={()=>void createChallenge()} disabled={!levelId}><Plus size={16}/> Nouveau défi</button></div>
             <div className="selector-row single"><label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{levels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label></div>
             <div className="dojo-layout"><div className="panel"><div className="panel-heading"><div><h3>Défis de {currentLevel?.label??"la classe"}</h3><p>{challenges.length} défi(s)</p></div></div>{challenges.length===0?<Empty text="Aucun défi pour cette classe."/>:<div className="item-list">{challenges.map(ch=><div key={ch.id} className={`challenge-row ${challengeId===ch.id?"selected":""}`}><button className="challenge-select" onClick={()=>setChallengeId(ch.id)}><span className="challenge-symbol"><Target size={17}/></span><span><strong>{ch.title}</strong><small>{ch.kind==="discovery"?"Défi découverte":"Défi standard"}</small></span></button><div className="row-actions"><Status status={ch.status}/><button onClick={()=>void editChallenge(ch)} title="Modifier">✎</button><button onClick={()=>void toggleChallenge(ch)} title="Publier / dépublier">{ch.status==="published"?<X size={14}/>:<Check size={14}/>}</button><button onClick={()=>void deleteChallenge(ch)} title="Supprimer"><Trash2 size={14}/></button></div></div>)}</div>}</div>
-              <div className="panel"><div className="panel-heading"><div><h3>{currentChallenge?.title??"Questions du défi"}</h3><p>{questions.length} question(s) · 4 choix par question</p></div><button className="small-primary" onClick={()=>void createQuestion()} disabled={!challengeId}><Plus size={15}/> Question</button></div>{!challengeId?<Empty text="Choisis un défi pour gérer ses questions."/>:questions.length===0?<Empty text="Ce défi n’a pas encore de question."/>:<div className="question-list">{questions.map((q,i)=><article key={q.id} className="question-card"><div className="question-number">{String(i+1).padStart(2,"0")}</div><div className="question-main"><strong>{q.prompt}</strong><div className="choice-list">{q.choices.map((choice,j)=><span className={j===q.correct_index?"correct-choice":""} key={j}>{String.fromCharCode(65+j)}. {choice}{j===q.correct_index&&<Check size={13}/>}</span>)}</div>{q.explanation&&<p>{q.explanation}</p>}</div><div className="row-actions"><button onClick={()=>void editQuestion(q)} title="Modifier">✎</button><button onClick={()=>void deleteQuestion(q)} title="Supprimer"><Trash2 size={14}/></button></div></article>)}</div>}</div></div>
+              <div className="panel"><div className="panel-heading"><div><h3>{currentChallenge?.title??"Questions du défi"}</h3><p>{questions.length} question(s) · 4 choix par question</p></div><button className="small-primary" onClick={()=>void createQuestion()} disabled={!challengeId}><Plus size={15}/> Question</button></div>{!challengeId?<Empty text="Choisis un défi pour gérer ses questions."/>:questions.length===0?<Empty text="Ce défi n’a pas encore de question."/>:<div className="question-list">{questions.map((q,i)=><article key={q.id} className="question-card"><div className="question-number">{String(i+1).padStart(2,"0")}</div><div className="question-main"><strong><MathHtml text={q.prompt}/></strong><div className="choice-list">{q.choices.map((choice,j)=><span className={j===q.correct_index?"correct-choice":""} key={j}>{String.fromCharCode(65+j)}. <MathHtml text={choice}/>{j===q.correct_index&&<Check size={13}/>}</span>)}</div>{q.explanation&&<p><MathHtml text={q.explanation}/></p>}</div><div className="row-actions"><button onClick={()=>void editQuestion(q)} title="Modifier">✎</button><button onClick={()=>void deleteQuestion(q)} title="Supprimer"><Trash2 size={14}/></button></div></article>)}</div>}</div></div>
           </section>}
         </div>
+        {entry && <EntryPage spec={entry} onClose={() => setEntry(null)} />}
         {capsuleEditor && (
           <CapsuleEditor
             key={capsuleEditor.capsule?.id ?? "new-capsule"}
