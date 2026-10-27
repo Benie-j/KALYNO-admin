@@ -21,10 +21,8 @@ type Chapter = { id: string; subject_id: string; title: string; position: number
 type Capsule = { id: string; chapter_id: string; title: string; body: string; minutes: number; position: number; kind: string; is_high_yield: boolean };
 type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
-type Challenge = { id: string; level_id: string; title: string; position: number; status: "draft" | "published"; kind: "discovery" | "standard" };
-type Question = { id: string; challenge_id: string; position: number; prompt: string; choices: string[]; correct_index: number; explanation: string | null };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge" | "dojo";
+type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 const KIND_LABEL: Record<string, string> = { intro: "Introduction", text: "Texte", rule: "Règle / formule", tip: "Astuce", pitfall: "Piège à éviter" };
 
@@ -77,18 +75,14 @@ export default function App() {
   const [capsules, setCapsules] = useState<Capsule[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const [challengeId, setChallengeId] = useState("");
-  const [questions, setQuestions] = useState<Question[]>([]);
   const [searchText, setSearchText] = useState("");
-  const [counts, setCounts] = useState({ subjects: 0, chapters: 0, capsules: 0, cards: 0, challenges: 0, students: 0 });
+  const [counts, setCounts] = useState({ subjects: 0, chapters: 0, capsules: 0, cards: 0, students: 0 });
   const [entry, setEntry] = useState<EntrySpec | null>(null);
   const [capsuleEditor, setCapsuleEditor] = useState<{ capsule: Capsule | null } | null>(null);
 
   const currentLevel = levels.find(x => x.id === levelId);
   const currentSubject = subjects.find(x => x.id === subjectId);
   const currentChapter = chapters.find(x => x.id === chapterId);
-  const currentChallenge = challenges.find(x => x.id === challengeId);
 
   const loadLevels = useCallback(async () => {
     const { data, error } = await supabase.from("levels").select("id,label,position,is_active,cycle,icon_key,tagline").order("position");
@@ -139,37 +133,17 @@ export default function App() {
     setBanners((data ?? []) as Banner[]);
   }, []);
 
-  const loadChallenges = useCallback(async (activeLevel: string) => {
-    if (!activeLevel) { setChallenges([]); setChallengeId(""); setQuestions([]); return; }
-    const { data, error } = await supabase.from("challenges")
-      .select("id,level_id,title,position,status,kind").eq("level_id", activeLevel).order("position");
-    if (error) throw error;
-    const rows = (data ?? []) as Challenge[];
-    setChallenges(rows);
-    setChallengeId(previous => rows.some(x => x.id === previous) ? previous : (rows[0]?.id ?? ""));
-  }, []);
-
-  const loadQuestions = useCallback(async (activeChallenge: string) => {
-    if (!activeChallenge) { setQuestions([]); return; }
-    const { data, error } = await supabase.from("questions")
-      .select("id,challenge_id,position,prompt,choices,correct_index,explanation")
-      .eq("challenge_id", activeChallenge).order("position");
-    if (error) throw error;
-    setQuestions((data ?? []) as Question[]);
-  }, []);
-
   const refreshCounts = useCallback(async () => {
-    const [s, c, ca, cr, ch, st] = await Promise.all([
+    const [s, c, ca, cr, st] = await Promise.all([
       supabase.from("subjects").select("id", { count: "exact", head: true }),
       supabase.from("chapters").select("id", { count: "exact", head: true }),
       supabase.from("capsules").select("id", { count: "exact", head: true }),
       supabase.from("cards").select("id", { count: "exact", head: true }),
-      supabase.from("challenges").select("id", { count: "exact", head: true }),
       supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "student")
     ]);
-    const firstError = [s,c,ca,cr,ch,st].find(x => x.error)?.error;
+    const firstError = [s,c,ca,cr,st].find(x => x.error)?.error;
     if (firstError) throw firstError;
-    setCounts({ subjects: s.count ?? 0, chapters: c.count ?? 0, capsules: ca.count ?? 0, cards: cr.count ?? 0, challenges: ch.count ?? 0, students: st.count ?? 0 });
+    setCounts({ subjects: s.count ?? 0, chapters: c.count ?? 0, capsules: ca.count ?? 0, cards: cr.count ?? 0, students: st.count ?? 0 });
   }, []);
 
   const reloadAll = useCallback(async () => {
@@ -207,10 +181,9 @@ export default function App() {
   }, [authorize]);
 
   useEffect(() => { if (session) void reloadAll(); }, [session, reloadAll]);
-  useEffect(() => { if (session && levelId) { void loadContent(levelId).catch(e => setNotice(errorText(e))); void loadChallenges(levelId).catch(e => setNotice(errorText(e))); } }, [session, levelId, loadContent, loadChallenges]);
+  useEffect(() => { if (session && levelId) void loadContent(levelId).catch(e => setNotice(errorText(e))); }, [session, levelId, loadContent]);
   useEffect(() => { if (session) void loadChapters(subjectId).catch(e => setNotice(errorText(e))); }, [session, subjectId, loadChapters]);
   useEffect(() => { if (session) void loadLesson(chapterId).catch(e => setNotice(errorText(e))); }, [session, chapterId, loadLesson]);
-  useEffect(() => { if (session) void loadQuestions(challengeId).catch(e => setNotice(errorText(e))); }, [session, challengeId, loadQuestions]);
 
   async function signIn(event: FormEvent) {
     event.preventDefault(); setBusy(true); setAuthError("");
@@ -460,88 +433,6 @@ export default function App() {
       if (error) throw error; await loadBanners();
     }, "Bannière supprimée.");
   }
-  function createChallenge() {
-    if (!levelId) return;
-    setEntry({
-      eyebrow: "DOJO", title: "Nouveau défi", submitLabel: "Créer le défi",
-      intro: `Classe : ${currentLevel?.label ?? "—"}. Le défi est créé en brouillon.`,
-      fields: [
-        { kind: "math", key: "title", label: "Titre du défi", required: true, single: true, placeholder: "Ex. : Ton premier défi", preview: "title" },
-        { kind: "select", key: "kind", label: "Type de défi", options: [
-          { value: "standard", label: "Défi standard" },
-          { value: "discovery", label: "Défi de découverte (premier défi après le pseudo)" }
-        ], help: "Le premier défi se compose plus confortablement dans la section « Premier défi »." }
-      ],
-      initial: { title: "", kind: "standard" },
-      onSubmit: v => save(async () => {
-        const { error } = await supabase.from("challenges").insert({ level_id: levelId, title: str(v.title), kind: str(v.kind), position: challenges.length + 1, status: "draft" });
-        if (error) throw error; await loadChallenges(levelId);
-      }, "Défi créé en brouillon.")
-    });
-  }
-  function editChallenge(challenge: Challenge) {
-    setEntry({
-      eyebrow: "DOJO", title: "Modifier le défi", submitLabel: "Enregistrer",
-      fields: [{ kind: "math", key: "title", label: "Titre du défi", required: true, single: true, preview: "title" }],
-      initial: { title: challenge.title },
-      onSubmit: v => save(async () => {
-        const { error } = await supabase.from("challenges").update({ title: str(v.title) }).eq("id", challenge.id);
-        if (error) throw error; await loadChallenges(levelId);
-      }, "Défi mis à jour.")
-    });
-  }
-  async function toggleChallenge(challenge: Challenge) {
-    const status = challenge.status === "published" ? "draft" : "published";
-    if (status === "published" && !questions.length && challenge.id === challengeId) { setNotice("Échec : ajoute au moins une question avant de publier ce défi."); return; }
-    if (status === "published" && !confirm("Publier ce défi pour les élèves ?")) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("challenges").update({ status }).eq("id", challenge.id);
-      if (error) throw error; await loadChallenges(levelId);
-    }, status === "published" ? "Défi publié." : "Défi remis en brouillon.");
-  }
-  async function deleteChallenge(challenge: Challenge) {
-    if (!confirm(`Supprimer le défi « ${challenge.title} » et ses questions ?`)) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("challenges").delete().eq("id", challenge.id);
-      if (error) throw error; setChallengeId(""); await loadChallenges(levelId);
-    }, "Défi supprimé.");
-  }
-  function createQuestion() {
-    if (!challengeId) return;
-    setEntry({
-      eyebrow: "DOJO · QUESTION", title: "Nouvelle question", submitLabel: "Ajouter la question",
-      intro: `Défi : ${currentChallenge?.title ?? "—"}`,
-      fields: questionFields,
-      initial: { prompt: "", choices: ["", "", "", ""], correct: "0", explanation: "" },
-      onSubmit: v => save(async () => {
-        const { error } = await supabase.from("questions").insert({
-          challenge_id: challengeId, position: questions.length + 1, prompt: str(v.prompt), choices: strings(v.choices, 4).map(x => x.trim()),
-          correct_index: Number(str(v.correct)), explanation: str(v.explanation) || null
-        });
-        if (error) throw error; await loadQuestions(challengeId);
-      }, "Question ajoutée.")
-    });
-  }
-  function editQuestion(question: Question) {
-    setEntry({
-      eyebrow: "DOJO · QUESTION", title: "Modifier la question", submitLabel: "Enregistrer",
-      fields: questionFields,
-      initial: { prompt: question.prompt, choices: strings(question.choices, 4), correct: String(question.correct_index), explanation: question.explanation ?? "" },
-      onSubmit: v => save(async () => {
-        const { error } = await supabase.from("questions").update({
-          prompt: str(v.prompt), choices: strings(v.choices, 4).map(x => x.trim()), correct_index: Number(str(v.correct)), explanation: str(v.explanation) || null
-        }).eq("id", question.id);
-        if (error) throw error; await loadQuestions(challengeId);
-      }, "Question mise à jour.")
-    });
-  }
-  async function deleteQuestion(question: Question) {
-    if (!confirm("Supprimer cette question ?")) return;
-    await runAction(async () => {
-      const { error } = await supabase.from("questions").delete().eq("id", question.id);
-      if (error) throw error; await loadQuestions(challengeId);
-    }, "Question supprimée.");
-  }
 
   const visibleChapters = useMemo(() => chapters.filter(x => `${x.title} ${x.tag ?? ""}`.toLowerCase().includes(searchText.toLowerCase())), [chapters, searchText]);
 
@@ -579,7 +470,6 @@ export default function App() {
     { id: "banners" as Section, label: "Explorer · À la une", icon: Sparkles },
     { id: "motivation" as Section, label: "Accueil · Examens & citations", icon: Activity },
     { id: "firstchallenge" as Section, label: "Premier défi · Onboarding", icon: Rocket },
-    { id: "dojo" as Section, label: "Dojo · Défis", icon: Target }
   ];
 
   return (
@@ -617,13 +507,11 @@ export default function App() {
               <Stat icon={<FileText/>} label="Chapitres" value={counts.chapters} tone="green" detail="Brouillons et publiés"/>
               <Stat icon={<ClipboardList/>} label="Blocs pédagogiques" value={counts.capsules} tone="amber" detail="Contenus de leçon"/>
               <Stat icon={<CircleHelp/>} label="Cartes & exercices" value={counts.cards} tone="rose" detail="QCM, cartes, clozes"/>
-              <Stat icon={<Target/>} label="Défis Dojo" value={counts.challenges} tone="teal" detail="Défis enregistrés"/>
             </div>
             <div className="section-heading"><div><h3>Accès rapides</h3><p>Gère les contenus réellement consommés par les élèves.</p></div></div>
             <div className="quick-grid">
               <button className="quick-card" onClick={()=>setSection("courses")}><div className="quick-icon blue"><BookOpen/></div><strong>Gérer les cours</strong><span>Disciplines, chapitres, leçons et exercices</span><b>Ouvrir <span>→</span></b></button>
               <button className="quick-card" onClick={()=>setSection("banners")}><div className="quick-icon violet"><Sparkles/></div><strong>Mettre à la une</strong><span>Publier une bannière dans Explorer</span><b>Ouvrir <span>→</span></b></button>
-              <button className="quick-card" onClick={()=>setSection("dojo")}><div className="quick-icon green"><Target/></div><strong>Préparer un défi</strong><span>Créer les questions QCM du Dojo</span><b>Ouvrir <span>→</span></b></button>
             </div>
             <div className="info-banner"><div className="info-symbol"><Cloud size={21}/></div><div><strong>Une seule source de vérité</strong><p>Les cours et défis publiés ici sont lus par l’application Android via les politiques RLS de Supabase. Les brouillons restent réservés à l’administration.</p></div><ShieldCheck className="info-check" size={22}/></div>
           </section>}
@@ -684,12 +572,7 @@ export default function App() {
 
           {section === "firstchallenge" && <FirstChallengeComposer levels={levels} levelId={levelId} onLevelChange={setLevelId} onNotice={setNotice} />}
 
-          {section === "dojo" && <section className="page">
-            <div className="page-intro"><div><div className="eyebrow">ENTRAÎNEMENT & QCM</div><h2>Préparer les défis du Dojo</h2><p>Les défis publiés sont chargés par l’application Android selon la classe de l’élève.</p></div><button className="primary" onClick={()=>void createChallenge()} disabled={!levelId}><Plus size={16}/> Nouveau défi</button></div>
-            <div className="selector-row single"><label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{levels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label></div>
-            <div className="dojo-layout"><div className="panel"><div className="panel-heading"><div><h3>Défis de {currentLevel?.label??"la classe"}</h3><p>{challenges.length} défi(s)</p></div></div>{challenges.length===0?<Empty text="Aucun défi pour cette classe."/>:<div className="item-list">{challenges.map(ch=><div key={ch.id} className={`challenge-row ${challengeId===ch.id?"selected":""}`}><button className="challenge-select" onClick={()=>setChallengeId(ch.id)}><span className="challenge-symbol"><Target size={17}/></span><span><strong>{ch.title}</strong><small>{ch.kind==="discovery"?"Défi découverte":"Défi standard"}</small></span></button><div className="row-actions"><Status status={ch.status}/><button onClick={()=>void editChallenge(ch)} title="Modifier">✎</button><button onClick={()=>void toggleChallenge(ch)} title="Publier / dépublier">{ch.status==="published"?<X size={14}/>:<Check size={14}/>}</button><button onClick={()=>void deleteChallenge(ch)} title="Supprimer"><Trash2 size={14}/></button></div></div>)}</div>}</div>
-              <div className="panel"><div className="panel-heading"><div><h3>{currentChallenge?.title??"Questions du défi"}</h3><p>{questions.length} question(s) · 4 choix par question</p></div><button className="small-primary" onClick={()=>void createQuestion()} disabled={!challengeId}><Plus size={15}/> Question</button></div>{!challengeId?<Empty text="Choisis un défi pour gérer ses questions."/>:questions.length===0?<Empty text="Ce défi n’a pas encore de question."/>:<div className="question-list">{questions.map((q,i)=><article key={q.id} className="question-card"><div className="question-number">{String(i+1).padStart(2,"0")}</div><div className="question-main"><strong><MathHtml text={q.prompt}/></strong><div className="choice-list">{q.choices.map((choice,j)=><span className={j===q.correct_index?"correct-choice":""} key={j}>{String.fromCharCode(65+j)}. <MathHtml text={choice}/>{j===q.correct_index&&<Check size={13}/>}</span>)}</div>{q.explanation&&<p><MathHtml text={q.explanation}/></p>}</div><div className="row-actions"><button onClick={()=>void editQuestion(q)} title="Modifier">✎</button><button onClick={()=>void deleteQuestion(q)} title="Supprimer"><Trash2 size={14}/></button></div></article>)}</div>}</div></div>
-          </section>}
+
         </div>
         {entry && <EntryPage spec={entry} onClose={() => setEntry(null)} />}
         {capsuleEditor && (
