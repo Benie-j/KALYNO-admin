@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
-  Activity, AlertCircle, ArrowDownUp, BookOpen, Check, ChevronDown, CircleHelp,
+  Activity, AlertCircle, ArrowDown, ArrowDownUp, ArrowUp, BookOpen, Check, ChevronDown, CircleHelp,
   ClipboardList, Cloud, FileText, GraduationCap, LayoutDashboard, LogOut, Plus,
   RefreshCw, Rocket, Save, Search, ShieldCheck, Sparkles, Target, Trash2, UploadCloud,
   X
@@ -17,13 +17,20 @@ import { MathHtml } from "./MathField";
 
 type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
 type Subject = { id: string; level_id: string; name: string; emoji: string | null; icon_key: string | null; coefficient: number; position: number; is_active: boolean };
-type Chapter = { id: string; subject_id: string; title: string; position: number; status: "draft" | "published"; tag?: string | null };
-type Capsule = { id: string; chapter_id: string; title: string; body: string; minutes: number; position: number; kind: string; is_high_yield: boolean };
+type Chapter = { id: string; subject_id: string; title: string; position: number; status: "draft" | "published"; tag?: string | null; complement?: string | null };
+type LessonSession = { id: string; chapter_id: string; title: string; position: number };
+type Capsule = { id: string; chapter_id: string; title: string; body: string; minutes: number; position: number; kind: string; is_high_yield: boolean; session_id?: string | null };
 type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
 
 type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
+// Champ facultatif rattaché à la leçon : affiché à l'élève dans un encart repliable en fin de leçon.
+const COMPLEMENT_FIELD: FieldDef = {
+  kind: "math", key: "complement", label: "Notes et ressources complémentaires (facultatif)", rows: 5, preview: "text",
+  placeholder: "Ex. : œuvre intégrale à lire, rappel de méthode, lien utile…",
+  help: "Laisse vide s'il n'y a rien à ajouter : l'encart n'apparaît alors pas chez l'élève."
+};
 const KIND_LABEL: Record<string, string> = { intro: "Introduction", text: "Texte", rule: "Règle / formule", tip: "Astuce", pitfall: "Piège à éviter" };
 
 function errorText(error: unknown) {
@@ -80,6 +87,7 @@ export default function App() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [chapterId, setChapterId] = useState("");
   const [capsules, setCapsules] = useState<Capsule[]>([]);
+  const [sessions, setSessions] = useState<LessonSession[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [searchText, setSearchText] = useState("");
@@ -112,9 +120,15 @@ export default function App() {
 
   const loadChapters = useCallback(async (activeSubject: string) => {
     if (!activeSubject) { setChapters([]); setChapterId(""); setCapsules([]); setCards([]); return; }
-    const { data, error } = await supabase.from("chapters")
-      .select("id,subject_id,title,position,status,tag")
+    let { data, error } = await supabase.from("chapters")
+      .select("id,subject_id,title,position,status,tag,complement")
       .eq("subject_id", activeSubject).order("position");
+    if (error) {
+      // Migration des séances pas encore passée : on lit sans la colonne `complement`
+      ({ data, error } = await supabase.from("chapters")
+        .select("id,subject_id,title,position,status,tag")
+        .eq("subject_id", activeSubject).order("position"));
+    }
     if (error) throw error;
     const rows = (data ?? []) as Chapter[];
     setChapters(rows);
@@ -122,13 +136,20 @@ export default function App() {
   }, []);
 
   const loadLesson = useCallback(async (activeChapter: string) => {
-    if (!activeChapter) { setCapsules([]); setCards([]); return; }
-    const [capsuleResult, cardResult] = await Promise.all([
-      supabase.from("capsules").select("id,chapter_id,title,body,minutes,position,kind,is_high_yield").eq("chapter_id", activeChapter).order("position"),
-      supabase.from("cards").select("id,chapter_id,capsule_id,kind,front,back,choices,correct_index,explanation,position,is_high_yield").eq("chapter_id", activeChapter).order("position")
+    if (!activeChapter) { setCapsules([]); setCards([]); setSessions([]); return; }
+    const [firstCapsuleTry, cardResult, sessionResult] = await Promise.all([
+      supabase.from("capsules").select("id,chapter_id,title,body,minutes,position,kind,is_high_yield,session_id").eq("chapter_id", activeChapter).order("position"),
+      supabase.from("cards").select("id,chapter_id,capsule_id,kind,front,back,choices,correct_index,explanation,position,is_high_yield").eq("chapter_id", activeChapter).order("position"),
+      supabase.from("lesson_sessions").select("id,chapter_id,title,position").eq("chapter_id", activeChapter).order("position")
     ]);
+    let capsuleResult = firstCapsuleTry;
+    if (capsuleResult.error) {
+      // Colonne `session_id` absente (migration pas encore passée) : lecture sans séances
+      capsuleResult = await supabase.from("capsules").select("id,chapter_id,title,body,minutes,position,kind,is_high_yield").eq("chapter_id", activeChapter).order("position");
+    }
     if (capsuleResult.error) throw capsuleResult.error;
     if (cardResult.error) throw cardResult.error;
+    setSessions(sessionResult.error ? [] : (sessionResult.data ?? []) as LessonSession[]);
     setCapsules((capsuleResult.data ?? []) as Capsule[]);
     setCards((cardResult.data ?? []) as Card[]);
   }, []);
@@ -266,11 +287,12 @@ export default function App() {
       intro: "Le chapitre est créé en brouillon : tu le publieras quand il sera prêt.",
       fields: [
         { kind: "math", key: "title", label: "Titre du chapitre", required: true, single: true, placeholder: "Ex. : Équations du premier degré", preview: "title" },
-        { kind: "text", key: "tag", label: "Smart Tag (facultatif)", max: 60, help: "Laisse vide s'il n'y en a pas." }
+        { kind: "text", key: "tag", label: "Smart Tag (facultatif)", max: 60, help: "Laisse vide s'il n'y en a pas." },
+        COMPLEMENT_FIELD
       ],
-      initial: { title: "", tag: "" },
+      initial: { title: "", tag: "", complement: "" },
       onSubmit: v => save(async () => {
-        const { error } = await supabase.from("chapters").insert({ subject_id: subjectId, title: str(v.title), tag: str(v.tag) || null, position: chapters.length, status: "draft" });
+        const { error } = await supabase.from("chapters").insert({ subject_id: subjectId, title: str(v.title), tag: str(v.tag) || null, complement: str(v.complement) || null, position: chapters.length, status: "draft" });
         if (error) throw error; await loadChapters(subjectId);
       }, "Chapitre créé en brouillon.")
     });
@@ -280,11 +302,12 @@ export default function App() {
       eyebrow: "CHAPITRE", title: "Modifier le chapitre", submitLabel: "Enregistrer",
       fields: [
         { kind: "math", key: "title", label: "Titre du chapitre", required: true, single: true, preview: "title" },
-        { kind: "text", key: "tag", label: "Smart Tag (facultatif)", max: 60 }
+        { kind: "text", key: "tag", label: "Smart Tag (facultatif)", max: 60 },
+        COMPLEMENT_FIELD
       ],
-      initial: { title: chapter.title, tag: chapter.tag ?? "" },
+      initial: { title: chapter.title, tag: chapter.tag ?? "", complement: chapter.complement ?? "" },
       onSubmit: v => save(async () => {
-        const { error } = await supabase.from("chapters").update({ title: str(v.title), tag: str(v.tag) || null }).eq("id", chapter.id);
+        const { error } = await supabase.from("chapters").update({ title: str(v.title), tag: str(v.tag) || null, complement: str(v.complement) || null }).eq("id", chapter.id);
         if (error) throw error; await loadChapters(subjectId);
       }, "Chapitre mis à jour.")
     });
@@ -303,6 +326,59 @@ export default function App() {
       const { error } = await supabase.from("chapters").delete().eq("id", chapter.id);
       if (error) throw error; setChapterId(""); await loadChapters(subjectId);
     }, "Chapitre supprimé.");
+  }
+  function createSession() {
+    if (!chapterId) return;
+    setEntry({
+      eyebrow: "SÉANCE", title: "Nouvelle séance", submitLabel: "Créer la séance",
+      intro: `Leçon : ${currentChapter?.title ?? "—"}`,
+      fields: [
+        { kind: "math", key: "title", label: "Intitulé de la séance", required: true, single: true, placeholder: "Ex. : Présentation de l'auteur et contexte de l'œuvre", preview: "title",
+          help: "Le numéro (Séance 1, Séance 2…) est ajouté automatiquement selon l'ordre. En littérature africaine : présentation de l'auteur, lecture d'un extrait, étude des thèmes, expression écrite…" }
+      ],
+      initial: { title: "" },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("lesson_sessions").insert({ chapter_id: chapterId, title: str(v.title), position: sessions.length });
+        if (error) throw error; await loadLesson(chapterId);
+      }, "Séance créée.")
+    });
+  }
+  function editSession(session: LessonSession) {
+    setEntry({
+      eyebrow: "SÉANCE", title: "Modifier la séance", submitLabel: "Enregistrer",
+      fields: [{ kind: "math", key: "title", label: "Intitulé de la séance", required: true, single: true, preview: "title" }],
+      initial: { title: session.title },
+      onSubmit: v => save(async () => {
+        const { error } = await supabase.from("lesson_sessions").update({ title: str(v.title) }).eq("id", session.id);
+        if (error) throw error; await loadLesson(chapterId);
+      }, "Séance mise à jour.")
+    });
+  }
+  async function moveSession(session: LessonSession, direction: -1 | 1) {
+    const from = sessions.findIndex(x => x.id === session.id);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= sessions.length) return;
+    const order = [...sessions];
+    order.splice(to, 0, order.splice(from, 1)[0]);
+    await runAction(async () => {
+      const results = await Promise.all(order.map((s, index) => supabase.from("lesson_sessions").update({ position: index }).eq("id", s.id)));
+      const failed = results.find(r => r.error);
+      if (failed?.error) throw failed.error;
+      await loadLesson(chapterId);
+    }, "Ordre des séances mis à jour.");
+  }
+  async function deleteSession(session: LessonSession) {
+    if (!confirm(`Supprimer la séance « ${session.title} » ? Ses blocs sont conservés, sans séance.`)) return;
+    await runAction(async () => {
+      const { error } = await supabase.from("lesson_sessions").delete().eq("id", session.id);
+      if (error) throw error; await loadLesson(chapterId);
+    }, "Séance supprimée.");
+  }
+  async function assignCapsule(capsule: Capsule, sessionId: string) {
+    await runAction(async () => {
+      const { error } = await supabase.from("capsules").update({ session_id: sessionId || null }).eq("id", capsule.id);
+      if (error) throw error; await loadLesson(chapterId);
+    }, sessionId ? "Bloc rattaché à la séance." : "Bloc retiré de la séance.");
   }
   function createCapsule() {
     if (!chapterId) return;
@@ -567,8 +643,10 @@ export default function App() {
             <div className="panel lesson-panel">
               <div className="panel-heading"><div><div className="eyebrow">ÉDITEUR DE LEÇON</div><h3>{currentChapter?.title ?? "Sélectionne un chapitre"}</h3><p>Les blocs et les cartes ci-dessous sont partagés avec l’application élève.</p></div><div className="panel-actions"><button className="secondary" disabled={!currentChapter} onClick={()=>currentChapter&&void toggleChapter(currentChapter)}>{currentChapter?.status==="published"?"Dépublier":"Publier le chapitre"}</button><button className="small-primary" disabled={!chapterId} onClick={()=>void createCapsule()}><Plus size={15}/> Bloc</button><button className="small-primary" disabled={!chapterId} onClick={()=>void createCard()}><Plus size={15}/> Carte / exercice</button></div></div>
               {!chapterId?<Empty text="Sélectionne un chapitre pour consulter et modifier sa leçon."/>:<>
+                <div className="content-subhead"><h4>Séances <span>{sessions.length}</span></h4><div className="panel-actions"><small>Étapes chronologiques de la leçon (Séance 1, Séance 2…)</small><button className="small-primary" onClick={()=>void createSession()}><Plus size={15}/> Séance</button></div></div>
+                {sessions.length===0?<Empty text="Aucune séance. Sans séance, les blocs s’affichent à la suite, comme avant."/>:<div className="item-list">{sessions.map((session,i)=><div key={session.id} className="chapter-row"><span className="chapter-number">{i+1}</span><span className="chapter-title"><strong><MathHtml text={session.title}/></strong><small>Séance {i+1} · {capsules.filter(c=>c.session_id===session.id).length} bloc(s)</small></span><div className="row-actions"><button title="Monter" disabled={i===0} onClick={()=>void moveSession(session,-1)}><ArrowUp size={14}/></button><button title="Descendre" disabled={i===sessions.length-1} onClick={()=>void moveSession(session,1)}><ArrowDown size={14}/></button><button title="Modifier" onClick={()=>editSession(session)}>✎</button><button title="Supprimer" onClick={()=>void deleteSession(session)}><Trash2 size={14}/></button></div></div>)}</div>}
                 <div className="content-subhead"><h4>Blocs pédagogiques <span>{capsules.length}</span></h4><small>Ordre de présentation de la leçon</small></div>
-                {capsules.length===0?<Empty text="Aucun bloc. Ajoute une introduction, une explication, une règle ou une astuce."/>:<div className="capsule-grid">{capsules.map((capsule,i)=><article className="capsule-card" key={capsule.id}><div className="capsule-top"><span className="capsule-index">{String(i+1).padStart(2,"0")}</span><span className="kind-pill">{KIND_LABEL[capsule.kind]??capsule.kind}</span><button className="text-icon" onClick={()=>void editCapsule(capsule)} title="Modifier">✎</button><button className="text-icon danger" onClick={()=>void deleteCapsule(capsule)} title="Supprimer"><Trash2 size={14}/></button></div><h4>{capsule.title}</h4><p>{capsule.body||"Aucun texte dans ce bloc."}</p><div className="capsule-footer"><span>{capsule.minutes} min</span><span>{capsule.is_high_yield?"Prioritaire":"Bloc de leçon"}</span></div></article>)}</div>}
+                {capsules.length===0?<Empty text="Aucun bloc. Ajoute une introduction, une explication, une règle ou une astuce."/>:<div className="capsule-grid">{capsules.map((capsule,i)=><article className="capsule-card" key={capsule.id}><div className="capsule-top"><span className="capsule-index">{String(i+1).padStart(2,"0")}</span><span className="kind-pill">{KIND_LABEL[capsule.kind]??capsule.kind}</span><button className="text-icon" onClick={()=>void editCapsule(capsule)} title="Modifier">✎</button><button className="text-icon danger" onClick={()=>void deleteCapsule(capsule)} title="Supprimer"><Trash2 size={14}/></button></div><h4>{capsule.title}</h4><p>{capsule.body||"Aucun texte dans ce bloc."}</p><div className="capsule-footer"><span>{capsule.minutes} min</span><span>{capsule.is_high_yield?"Prioritaire":"Bloc de leçon"}</span></div><label style={{display:"block",marginTop:8,fontSize:10,color:"#6f7b91",fontWeight:700}}>Séance<select value={capsule.session_id??""} disabled={sessions.length===0} onChange={e=>void assignCapsule(capsule,e.target.value)} style={{width:"100%",marginTop:4,border:"1px solid #dfe5ef",borderRadius:7,padding:6,fontSize:11,background:"#fff"}}><option value="">Hors séance</option>{sessions.map((s,i)=><option key={s.id} value={s.id}>{`Séance ${i+1}`}</option>)}</select></label></article>)}</div>}
                 <div className="content-subhead"><h4>Cartes et exercices <span>{cards.length}</span></h4><small>QCM, flashcards et textes à trous</small></div>
                 {cards.length===0?<Empty text="Aucune carte ni exercice dans ce chapitre."/>:<div className="table-wrap"><table><thead><tr><th>Type</th><th>Énoncé / recto</th><th>Réponse</th><th></th></tr></thead><tbody>{cards.map(card=><tr key={card.id}><td><span className="kind-pill">{card.kind.toUpperCase()}</span></td><td className="question-cell"><MathHtml text={card.front}/></td><td><MathHtml text={card.kind==="qcm"&&card.choices?card.choices[card.correct_index??0]??"—":card.back??"—"}/></td><td className="table-actions"><button onClick={()=>void editCard(card)} title="Modifier">✎</button><button onClick={()=>void deleteCard(card)} title="Supprimer"><Trash2 size={14}/></button></td></tr>)}</tbody></table></div>}
               </>}
