@@ -32,6 +32,13 @@ function errorText(error: unknown) {
 }
 const ICON_LABEL: Record<string, string> = { "backpack": "Cartable", "graduation-cap": "Toque de diplômé", "book-open": "Livre ouvert", "pen-line": "Stylo", "calculator": "Calculatrice", "flask-conical": "Fiole", "globe": "Globe", "brain": "Cerveau", "layers": "Calques", "target": "Cible", "lightbulb": "Ampoule", "rocket": "Fusée", "trophy": "Trophée", "dumbbell": "Haltère" };
 const ICON_OPTIONS = SUBJECT_ICONS.map(value => ({ value, label: `${ICON_LABEL[value] ?? value} (${value})` }));
+// Coefficient d'une discipline (virgule ou point acceptés), lu par l'application pour le moteur FSRS.
+const parseCoef = (value: string | string[] | undefined) => Number(str(value).replace(",", "."));
+const coefProblem = (v: Record<string, string | string[]>): string | null => {
+  const n = parseCoef(v.coefficient);
+  return Number.isFinite(n) && n > 0 && n <= 20 ? null : "Coefficient : saisis un nombre supérieur à 0 et au plus 20 (ex. : 4 ou 2,5).";
+};
+const formatCoef = (n: number | null | undefined) => String(Math.round((Number(n) || 1) * 100) / 100).replace(".", ",");
 const str = (value: string | string[] | undefined) => String(Array.isArray(value) ? value[0] ?? "" : value ?? "").trim();
 const strings = (value: string | string[] | undefined, count: number) => Array.from({ length: count }, (_, i) => (Array.isArray(value) ? value[i] ?? "" : ""));
 
@@ -218,11 +225,13 @@ export default function App() {
       intro: `Classe : ${currentLevel?.label ?? "—"}`,
       fields: [
         { kind: "text", key: "name", label: "Nom de la discipline", required: true, max: 60, placeholder: "Ex. : Mathématiques", preview: "title" },
-        { kind: "select", key: "icon_key", label: "Icône", options: ICON_OPTIONS }
+        { kind: "select", key: "icon_key", label: "Icône", options: ICON_OPTIONS },
+        { kind: "text", key: "coefficient", label: "Coefficient à l’examen", required: true, max: 5, placeholder: "Ex. : 4", help: "Plus il est élevé, plus les cartes de cette discipline passent en priorité dans les révisions de l’élève.", preview: "hidden" }
       ],
-      initial: { name: "", icon_key: "book-open" },
+      initial: { name: "", icon_key: "book-open", coefficient: "1" },
+      validate: coefProblem,
       onSubmit: v => save(async () => {
-        const { error } = await supabase.from("subjects").insert({ level_id: levelId, name: str(v.name), emoji: "📘", icon_key: str(v.icon_key), position: subjects.length, is_active: true });
+        const { error } = await supabase.from("subjects").insert({ level_id: levelId, name: str(v.name), emoji: "📘", icon_key: str(v.icon_key), coefficient: parseCoef(v.coefficient), position: subjects.length, is_active: true });
         if (error) throw error; await loadContent(levelId);
       }, "Discipline créée.")
     });
@@ -232,11 +241,13 @@ export default function App() {
       eyebrow: "DISCIPLINE", title: "Modifier la discipline", submitLabel: "Enregistrer",
       fields: [
         { kind: "text", key: "name", label: "Nom de la discipline", required: true, max: 60, preview: "title" },
-        { kind: "select", key: "icon_key", label: "Icône", options: ICON_OPTIONS }
+        { kind: "select", key: "icon_key", label: "Icône", options: ICON_OPTIONS },
+        { kind: "text", key: "coefficient", label: "Coefficient à l’examen", required: true, max: 5, placeholder: "Ex. : 4", help: "Plus il est élevé, plus les cartes de cette discipline passent en priorité dans les révisions de l’élève.", preview: "hidden" }
       ],
-      initial: { name: subject.name, icon_key: subject.icon_key && SUBJECT_ICONS.includes(subject.icon_key) ? subject.icon_key : "book-open" },
+      initial: { name: subject.name, icon_key: subject.icon_key && SUBJECT_ICONS.includes(subject.icon_key) ? subject.icon_key : "book-open", coefficient: formatCoef(subject.coefficient) },
+      validate: coefProblem,
       onSubmit: v => save(async () => {
-        const { error } = await supabase.from("subjects").update({ name: str(v.name), icon_key: str(v.icon_key) }).eq("id", subject.id);
+        const { error } = await supabase.from("subjects").update({ name: str(v.name), icon_key: str(v.icon_key), coefficient: parseCoef(v.coefficient) }).eq("id", subject.id);
         if (error) throw error; await loadContent(levelId);
       }, "Discipline mise à jour.")
     });
@@ -546,7 +557,7 @@ export default function App() {
               <div className="panel">
                 <div className="panel-heading"><div><h3>Disciplines</h3><p>{currentLevel?.label ?? "Sélectionne une classe"}</p></div><button className="small-primary" onClick={()=>void createSubject()} disabled={!levelId}><Plus size={15}/> Ajouter</button></div>
                 <div className="list-search"><Search size={16}/><input value={searchText} onChange={e=>setSearchText(e.target.value)} placeholder="Filtrer les chapitres…"/></div>
-                {subjects.length===0?<Empty text="Aucune discipline pour cette classe."/>:<div className="item-list">{subjects.map(subject=><div key={subject.id} className={`subject-row ${subject.id===subjectId?"selected":""}`}><button className="subject-select" onClick={()=>setSubjectId(subject.id)}><span className="subject-emoji">{subject.emoji??"📘"}</span><span><strong>{subject.name}</strong><small>{chapters.length && subject.id===subjectId?`${chapters.length} chapitre(s)`:"Discipline"}</small></span></button><div className="row-actions"><button title="Modifier" onClick={()=>void editSubject(subject)}>✎</button><button title="Supprimer" onClick={()=>void deleteSubject(subject)}><Trash2 size={14}/></button></div></div>)}</div>}
+                {subjects.length===0?<Empty text="Aucune discipline pour cette classe."/>:<div className="item-list">{subjects.map(subject=><div key={subject.id} className={`subject-row ${subject.id===subjectId?"selected":""}`}><button className="subject-select" onClick={()=>setSubjectId(subject.id)}><span className="subject-emoji">{subject.emoji??"📘"}</span><span><strong>{subject.name}</strong><small>{chapters.length && subject.id===subjectId?`${chapters.length} chapitre(s)`:"Discipline"} · coef. {formatCoef(subject.coefficient)}</small></span></button><div className="row-actions"><button title="Modifier" onClick={()=>void editSubject(subject)}>✎</button><button title="Supprimer" onClick={()=>void deleteSubject(subject)}><Trash2 size={14}/></button></div></div>)}</div>}
               </div>
               <div className="panel">
                 <div className="panel-heading"><div><h3>Chapitres</h3><p>{currentSubject?.name ?? "Sélectionne une discipline"}</p></div><button className="small-primary" onClick={()=>void createChapter()} disabled={!subjectId}><Plus size={15}/> Ajouter</button></div>
