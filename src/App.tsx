@@ -120,17 +120,20 @@ export default function App() {
 
   const loadChapters = useCallback(async (activeSubject: string) => {
     if (!activeSubject) { setChapters([]); setChapterId(""); setCapsules([]); setCards([]); return; }
-    let { data, error } = await supabase.from("chapters")
+    const firstTry = await supabase.from("chapters")
       .select("id,subject_id,title,position,status,tag,complement")
       .eq("subject_id", activeSubject).order("position");
-    if (error) {
+    let rows: Chapter[];
+    if (firstTry.error) {
       // Migration des séances pas encore passée : on lit sans la colonne `complement`
-      ({ data, error } = await supabase.from("chapters")
+      const retry = await supabase.from("chapters")
         .select("id,subject_id,title,position,status,tag")
-        .eq("subject_id", activeSubject).order("position"));
+        .eq("subject_id", activeSubject).order("position");
+      if (retry.error) throw retry.error;
+      rows = (retry.data ?? []) as Chapter[];
+    } else {
+      rows = (firstTry.data ?? []) as Chapter[];
     }
-    if (error) throw error;
-    const rows = (data ?? []) as Chapter[];
     setChapters(rows);
     setChapterId(previous => rows.some(x => x.id === previous) ? previous : (rows[0]?.id ?? ""));
   }, []);
@@ -142,15 +145,18 @@ export default function App() {
       supabase.from("cards").select("id,chapter_id,capsule_id,kind,front,back,choices,correct_index,explanation,position,is_high_yield").eq("chapter_id", activeChapter).order("position"),
       supabase.from("lesson_sessions").select("id,chapter_id,title,position").eq("chapter_id", activeChapter).order("position")
     ]);
-    let capsuleResult = firstCapsuleTry;
-    if (capsuleResult.error) {
+    let capsuleRows: Capsule[];
+    if (firstCapsuleTry.error) {
       // Colonne `session_id` absente (migration pas encore passée) : lecture sans séances
-      capsuleResult = await supabase.from("capsules").select("id,chapter_id,title,body,minutes,position,kind,is_high_yield").eq("chapter_id", activeChapter).order("position");
+      const retry = await supabase.from("capsules").select("id,chapter_id,title,body,minutes,position,kind,is_high_yield").eq("chapter_id", activeChapter).order("position");
+      if (retry.error) throw retry.error;
+      capsuleRows = (retry.data ?? []) as Capsule[];
+    } else {
+      capsuleRows = (firstCapsuleTry.data ?? []) as Capsule[];
     }
-    if (capsuleResult.error) throw capsuleResult.error;
     if (cardResult.error) throw cardResult.error;
     setSessions(sessionResult.error ? [] : (sessionResult.data ?? []) as LessonSession[]);
-    setCapsules((capsuleResult.data ?? []) as Capsule[]);
+    setCapsules(capsuleRows);
     setCards((cardResult.data ?? []) as Card[]);
   }, []);
 
