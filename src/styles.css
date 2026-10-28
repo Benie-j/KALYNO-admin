@@ -197,3 +197,11 @@
 .ep-actions{position:sticky;bottom:0;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 26px;background:#fff;border-top:1px solid #e7ebf3;z-index:2}.ep-hint{margin-right:auto;font-size:11px;color:#7a879d}
 @media(max-width:980px){.ep-body{grid-template-columns:1fr;padding:14px}.ep-side{position:static}.ep-header{padding:16px 14px 12px}.ep-actions{padding:12px 14px}.ep-hint{display:none}.ep-form{padding:14px}}
 .capsule-editor .ep-errors{margin:0}.ep-errors ul{margin:4px 0;padding-left:18px;display:block}.ep-errors button{align-self:flex-start}
+
+/* Mots-clés acceptés (saisie libre) */
+.kw-box{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;border:1px solid #cbd5e1;border-radius:12px;background:#fff}
+.kw-box:focus-within{border-color:#0f766e;box-shadow:0 0 0 3px rgba(15,118,110,.15)}
+.kw-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 6px 4px 10px;border-radius:999px;background:#eef2f6;color:#0f172a;font:700 13px Manrope}
+.kw-chip.kw-main{background:#e2f5ec;color:#0b6b4a}
+.kw-chip button{display:inline-flex;border:0;background:transparent;color:inherit;cursor:pointer;padding:2px;border-radius:50%}
+.kw-box input{flex:1;min-width:140px;border:0;outline:0;background:transparent;font:inherit;padding:4px}

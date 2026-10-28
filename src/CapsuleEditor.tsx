@@ -73,12 +73,30 @@ function plainText(html: string): string {
   return box.value;
 }
 
+// Couleur posée à l'intérieur d'une formule : on la convertit en commande KaTeX (comme dans l'appli élève).
+function tintFormula(html: string): string {
+  let prev: string;
+  do {
+    prev = html;
+    html = html.replace(/<span\b[^>]*?style="([^"]*)"[^>]*>((?:(?!<span\b|<\/span>)[\s\S])*)<\/span>/gi,
+      (_m: string, style: string, inner: string) => {
+        const color = /(?:^|[;\s])color\s*:\s*(#[0-9a-f]{3,6})/i.exec(style);
+        const back = /background-color\s*:\s*(#[0-9a-f]{3,6})/i.exec(style);
+        let out = inner;
+        if (color) out = `\\textcolor{${color[1]}}{${out}}`;
+        if (back) out = `\\colorbox{${back[1]}}{$${out}$}`;
+        return out;
+      });
+  } while (html !== prev);
+  return html;
+}
+
 // Aperçu élève : le texte nettoyé, avec chaque $...$ / $$...$$ rendu par KaTeX.
 function renderPreview(html: string): string {
   return cleanHtml(html).replace(/\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g,
     (match: string, block?: string, inline?: string) => {
       try {
-        return katex.renderToString(plainText(block ?? inline ?? ""), {
+        return katex.renderToString(plainText(tintFormula(block ?? inline ?? "")), {
           displayMode: block !== undefined,
           throwOnError: false,
           errorColor: "#B91C1C"

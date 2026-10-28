@@ -36,6 +36,49 @@ function kindOf(q: Q): QKind {
   return (q.correct_indices?.length ?? 0) > 1 ? "multiple" : "single";
 }
 
+/** Mots-clés acceptés : une pastille par mot-clé. Entrée, « ; » ou « | » ajoute ; stocké un par ligne. */
+function KeywordsField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [pending, setPending] = useState("");
+  const items = value.split("\n").map(x => x.trim()).filter(Boolean);
+  const commit = (raw: string) => {
+    const add = raw.split(/[|;\n]/).map(x => x.trim()).filter(Boolean);
+    setPending("");
+    if (!add.length) return;
+    const seen = new Set(items.map(x => x.toLowerCase()));
+    const next = [...items];
+    for (const a of add) {
+      if (!seen.has(a.toLowerCase())) { seen.add(a.toLowerCase()); next.push(a); }
+    }
+    onChange(next.join("\n"));
+  };
+  const remove = (i: number) => onChange(items.filter((_, j) => j !== i).join("\n"));
+  return (
+    <div className="fc-field">
+      <span>Mots-clés acceptés</span>
+      <div className="kw-box">
+        {items.map((k, i) => (
+          <span key={k + i} className={"kw-chip" + (i === 0 ? " kw-main" : "")}>
+            {k}
+            <button type="button" title="Retirer" aria-label={"Retirer " + k} onClick={() => remove(i)}><X size={12} /></button>
+          </span>
+        ))}
+        <input
+          value={pending}
+          aria-label="Ajouter un mot-clé"
+          placeholder={items.length ? "Ajouter un autre mot-clé…" : "Tape un mot-clé puis Entrée"}
+          onChange={e => { const v = e.target.value; if (/[|;]/.test(v)) commit(v); else setPending(v); }}
+          onKeyDown={e => {
+            if (e.key === "Enter") { e.preventDefault(); commit(pending); }
+            else if (e.key === "Backspace" && !pending && items.length) remove(items.length - 1);
+          }}
+          onBlur={() => commit(pending)}
+        />
+      </div>
+      <small>Un seul suffit : l'app valide la réponse de l'élève dès qu'elle contient l'un de ces mots-clés, même dans une phrase. Accents, majuscules et petites fautes sont tolérés ; les nombres doivent être exacts. Le premier (en vert) est affiché à la correction.</small>
+    </div>
+  );
+}
+
 function toDraft(q: Q): Draft {
   const kind = kindOf(q);
   const correct = q.correct_indices?.length ? q.correct_indices : q.correct_index !== null && q.correct_index !== undefined ? [q.correct_index] : [];
@@ -57,7 +100,7 @@ function problems(d: Draft): string[] {
   const texts_ = [["Énoncé", d.prompt], ["Indice", d.hint], ["Explication", d.explanation], ...(d.kind === "text" ? [] : d.choices.map((c, i) => [`Choix ${String.fromCharCode(65 + i)}`, c]))];
   for (const [label, value] of texts_) formulaIssues(value).forEach(p => out.push(`${label} : ${p}.`));
   if (d.kind === "text") {
-    if (!d.answers.split("\n").some(x => x.trim())) out.push("Ajoute au moins une réponse acceptée.");
+    if (!d.answers.split("\n").some(x => x.trim())) out.push("Ajoute au moins un mot-clé accepté.");
     return out;
   }
   const texts = d.choices.map(x => x.trim());
@@ -432,10 +475,7 @@ export default function FirstChallengeComposer({ levels, levelId, onLevelChange,
                     </label>
 
                     {draft.kind === "text" ? (
-                      <label className="fc-field">Réponses acceptées
-                        <textarea rows={3} value={draft.answers} onChange={e => patch({ answers: e.target.value })} placeholder={"Une réponse par ligne.\nLa première est affichée à la correction."} />
-                        <small>Accents, majuscules et petites fautes de frappe sont tolérés par l'app. Les nombres doivent être exacts.</small>
-                      </label>
+                      <KeywordsField value={draft.answers} onChange={v => patch({ answers: v })} />
                     ) : (
                       <div className="fc-field">
                         <span>Choix · {draft.kind === "single" ? "sélectionne la bonne réponse" : "coche toutes les bonnes réponses"}</span>
