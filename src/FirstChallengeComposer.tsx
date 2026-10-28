@@ -4,6 +4,7 @@ import { supabase } from "./lib/supabase";
 import MathField, { MathHtml } from "./MathField";
 import MathPalette from "./MathPalette";
 import { formulaIssues } from "./mathText";
+import { composeExplanation, splitExplanation } from "./feynman";
 
 /**
  * Compositeur du PREMIER DÉFI : celui que l'élève reçoit juste après avoir saisi son pseudo.
@@ -18,7 +19,7 @@ type Q = {
   id: string; challenge_id: string; position: number; prompt: string; kind: QKind | null; choices: string[] | null;
   correct_index: number | null; correct_indices: number[] | null; answer: string | null; hint: string | null; explanation: string | null;
 };
-type Draft = { kind: QKind; prompt: string; choices: string[]; correct: number[]; answers: string; hint: string; explanation: string };
+type Draft = { kind: QKind; prompt: string; choices: string[]; correct: number[]; answers: string; hint: string; eClear: string; eAnalogy: string; eTakeaway: string };
 
 const KIND_LABEL: Record<QKind, string> = { single: "Une bonne réponse", multiple: "Plusieurs bonnes réponses", text: "Saisie libre" };
 const KIND_PILL: Record<QKind, string> = { single: "UNE BONNE RÉPONSE", multiple: "PLUSIEURS RÉPONSES", text: "SAISIE LIBRE" };
@@ -28,7 +29,8 @@ const MAX_CHOICES = 6;
 const COLS_FULL = "id,challenge_id,position,prompt,kind,choices,correct_index,correct_indices,answer,hint,explanation";
 const COLS_LEGACY = "id,challenge_id,position,prompt,choices,correct_index,explanation";
 
-const emptyDraft = (): Draft => ({ kind: "single", prompt: "", choices: ["", "", "", ""], correct: [], answers: "", hint: "", explanation: "" });
+const emptyDraft = (): Draft => ({ kind: "single", prompt: "", choices: ["", "", "", ""], correct: [], answers: "", hint: "", eClear: "", eAnalogy: "", eTakeaway: "" });
+const feynmanDraft = (raw: string | null) => { const f = splitExplanation(raw); return { eClear: f.clear, eAnalogy: f.analogy, eTakeaway: f.takeaway }; };
 const errText = (e: unknown) => (e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : String(e));
 
 function kindOf(q: Q): QKind {
@@ -89,7 +91,7 @@ function toDraft(q: Q): Draft {
     correct: kind === "text" ? [] : [...correct].sort((a, b) => a - b),
     answers: (q.answer ?? "").split("|").map(x => x.trim()).filter(Boolean).join("\n"),
     hint: q.hint ?? "",
-    explanation: q.explanation ?? ""
+    ...feynmanDraft(q.explanation)
   };
 }
 
@@ -97,7 +99,7 @@ function toDraft(q: Q): Draft {
 function problems(d: Draft): string[] {
   const out: string[] = [];
   if (!d.prompt.trim()) out.push("L'énoncé est vide.");
-  const texts_ = [["Énoncé", d.prompt], ["Indice", d.hint], ["Explication", d.explanation], ...(d.kind === "text" ? [] : d.choices.map((c, i) => [`Choix ${String.fromCharCode(65 + i)}`, c]))];
+  const texts_ = [["Énoncé", d.prompt], ["Indice", d.hint], ["Explication en clair", d.eClear], ["Analogie", d.eAnalogy], ["À retenir", d.eTakeaway], ...(d.kind === "text" ? [] : d.choices.map((c, i) => [`Choix ${String.fromCharCode(65 + i)}`, c]))];
   for (const [label, value] of texts_) formulaIssues(value).forEach(p => out.push(`${label} : ${p}.`));
   if (d.kind === "text") {
     if (!d.answers.split("\n").some(x => x.trim())) out.push("Ajoute au moins un mot-clé accepté.");
@@ -275,7 +277,7 @@ export default function FirstChallengeComposer({ levels, levelId, onLevelChange,
       correct_indices: isText ? null : correct,
       answer,
       hint: draft.hint.trim() || null,
-      explanation: draft.explanation.trim() || null
+      explanation: composeExplanation({ clear: draft.eClear, analogy: draft.eAnalogy, takeaway: draft.eTakeaway }) || null
     };
     await run(async () => {
       if (editing === "new") {
@@ -502,8 +504,14 @@ export default function FirstChallengeComposer({ levels, levelId, onLevelChange,
                     <label className="fc-field">Indice (facultatif)
                       <MathField value={draft.hint} onChange={v => patch({ hint: v })} single placeholder="Affiché seulement si l'élève le demande" ariaLabel="Indice" />
                     </label>
-                    <label className="fc-field">Explication (facultatif)
-                      <MathField value={draft.explanation} onChange={v => patch({ explanation: v })} rows={3} placeholder={"Affichée après la validation.\nUne étape par ligne."} ariaLabel="Explication" />
+                    <label className="fc-field">Explication en clair (facultatif)
+                      <MathField value={draft.eClear} onChange={v => patch({ eClear: v })} rows={3} placeholder={"Une idée par ligne, en mots simples, sans jargon."} ariaLabel="Explication en clair" />
+                    </label>
+                    <label className="fc-field">Analogie du quotidien (facultatif)
+                      <MathField value={draft.eAnalogy} onChange={v => patch({ eAnalogy: v })} rows={2} placeholder={"Compare à quelque chose que l'élève connaît déjà."} ariaLabel="Analogie" />
+                    </label>
+                    <label className="fc-field">À retenir en une phrase (facultatif)
+                      <MathField value={draft.eTakeaway} onChange={v => patch({ eTakeaway: v })} single placeholder={"L'essentiel, que l'élève peut répéter avec ses mots."} ariaLabel="À retenir" />
                     </label>
 
                     {draftIssues.length > 0 && <ul className="fc-issues">{draftIssues.map(p => <li key={p}>{p}</li>)}</ul>}
@@ -536,7 +544,8 @@ function Preview({ draft, title, fromEditor }: { draft: Draft | null; title: str
   if (!draft) return <div className="fc-phone fc-phone-empty"><p>L'aperçu élève apparaît dès qu'une question existe.</p></div>;
 
   const multiple = draft.kind === "multiple";
-  const steps = draft.explanation.split("\n").map(x => x.trim()).filter(Boolean);
+  const steps = draft.eClear.split("\n").map(x => x.trim()).filter(Boolean);
+  const feyn = Boolean(draft.eAnalogy.trim() || draft.eTakeaway.trim());
   const answers = draft.answers.split("\n").map(x => x.trim()).filter(Boolean);
   const goodText = draft.correct.map(i => draft.choices[i]).filter(Boolean).join(" · ");
 
@@ -572,7 +581,13 @@ function Preview({ draft, title, fromEditor }: { draft: Draft | null; title: str
         <div className="fc-card fc-corr">
           <b>BONNE RÉPONSE</b>
           <p className="fc-good">{draft.kind === "text" ? answers[0] ?? "—" : goodText ? <MathHtml text={goodText} /> : "—"}</p>
-          {steps.length > 0 && <><b className="fc-expl">EXPLICATION</b>{steps.map((s, i) => <p key={i}>{steps.length > 1 ? `${i + 1}. ` : ""}<MathHtml text={s} /></p>)}</>}
+          {feyn ? (
+            <div className="fc-feyn">
+              {steps.length > 0 && <section><b>EN CLAIR</b>{steps.map((s, i) => <p key={i}><MathHtml text={s} /></p>)}</section>}
+              {draft.eAnalogy.trim() && <section className="fc-feyn-img"><b>EN IMAGE</b><p><MathHtml text={draft.eAnalogy} /></p></section>}
+              {draft.eTakeaway.trim() && <section><b>À RETENIR</b><p className="fc-feyn-key"><MathHtml text={draft.eTakeaway} /></p></section>}
+            </div>
+          ) : steps.length > 0 && <><b className="fc-expl">EXPLICATION</b>{steps.map((s, i) => <p key={i}>{steps.length > 1 ? `${i + 1}. ` : ""}<MathHtml text={s} /></p>)}</>}
         </div>
       )}
 

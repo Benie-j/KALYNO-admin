@@ -205,3 +205,11 @@
 .kw-chip.kw-main{background:#e2f5ec;color:#0b6b4a}
 .kw-chip button{display:inline-flex;border:0;background:transparent;color:inherit;cursor:pointer;padding:2px;border-radius:50%}
 .kw-box input{flex:1;min-width:140px;border:0;outline:0;background:transparent;font:inherit;padding:4px}
+
+/* Aperçu Feynman (même rendu que l'app : carte blanche, bordure #E2E8F0, accent vert pétrole #0F766E) */
+.fc-feyn{display:grid;gap:8px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px;margin-top:6px}
+.fc-feyn section{display:grid;gap:3px}
+.fc-feyn b{font:800 10px Manrope;letter-spacing:1px;color:#0f766e}
+.fc-feyn p{margin:0;font-size:12px;line-height:1.5;color:#0f172a}
+.fc-feyn-img p{background:#f0fdfa;border-radius:8px;padding:8px}
+.fc-feyn .fc-feyn-key{font-weight:700;color:#0f766e}

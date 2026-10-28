@@ -13,6 +13,7 @@ import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
 import FirstChallengeComposer from "./FirstChallengeComposer";
 import EntryPage, { type EntrySpec, type FieldDef, type Values } from "./EntryPage";
+import { composeExplanation, splitExplanation } from "./feynman";
 import { MathHtml } from "./MathField";
 
 type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
@@ -47,6 +48,9 @@ const coefProblem = (v: Record<string, string | string[]>): string | null => {
 };
 const formatCoef = (n: number | null | undefined) => String(Math.round((Number(n) || 1) * 100) / 100).replace(".", ",");
 const str = (value: string | string[] | undefined) => String(Array.isArray(value) ? value[0] ?? "" : value ?? "").trim();
+// Explication en trois champs (technique de Feynman) <-> colonne `explanation`
+const explanationFrom = (v: Values) => composeExplanation({ clear: str(v.exp_clear), analogy: str(v.exp_analogy), takeaway: str(v.exp_takeaway) });
+const explanationValues = (raw: string | null | undefined) => { const f = splitExplanation(raw); return { exp_clear: f.clear, exp_analogy: f.analogy, exp_takeaway: f.takeaway }; };
 const strings = (value: string | string[] | undefined, count: number) => Array.from({ length: count }, (_, i) => (Array.isArray(value) ? value[i] ?? "" : ""));
 
 
@@ -61,7 +65,14 @@ const cardFields = (withKind: boolean, count: number): FieldDef[] => [
   { kind: "math", key: "back", label: "Réponse / complément (facultatif)", rows: 2, when: v => v.kind === "qcm" },
   { kind: "math", key: "back", label: "Verso / réponse", required: true, rows: 2, when: v => v.kind === "flashcard" },
   { kind: "math", key: "back", label: "Texte complété / réponse attendue", required: true, rows: 2, when: v => v.kind === "cloze" },
-  { kind: "math", key: "explanation", label: "Explication de la réponse (facultatif)", rows: 3 }
+  { kind: "math", key: "exp_clear", label: "Explication en clair (facultatif)", rows: 3,
+    placeholder: "Une idée par ligne, en mots simples, sans jargon.",
+    help: "Explique comme à un ami de 12 ans : phrases courtes, aucun terme technique non expliqué." },
+  { kind: "math", key: "exp_analogy", label: "Analogie du quotidien (facultatif)", rows: 2,
+    placeholder: "Ex. : le courant, c'est de l'eau qui circule dans un tuyau.",
+    help: "Compare le concept à quelque chose que l'élève connaît déjà." },
+  { kind: "math", key: "exp_takeaway", label: "À retenir en une phrase (facultatif)", single: true,
+    placeholder: "L'essentiel, que l'élève peut répéter avec ses mots." }
 ];
 
 
@@ -445,14 +456,14 @@ export default function App() {
       eyebrow: "CARTE · DOJO", title: "Nouvelle carte", submitLabel: "Créer la carte",
       intro: "Les formules LaTeX s'écrivent entre $ … $ (Alt+M). L'élève les voit rendues dans l'app.",
       fields: cardFields(true, 4),
-      initial: { kind: "qcm", front: "", choices: ["", "", "", ""], correct: "0", back: "", explanation: "" },
+      initial: { kind: "qcm", front: "", choices: ["", "", "", ""], correct: "0", back: "", ...explanationValues(null) },
       onSubmit: v => save(async () => {
         const kind = str(v.kind);
         const isQcm = kind === "qcm";
         const { error } = await supabase.from("cards").insert({
           chapter_id: chapterId, capsule_id, kind, front: str(v.front), back: str(v.back) || null,
           choices: isQcm ? strings(v.choices, 4).map(x => x.trim()) : null, correct_index: isQcm ? Number(str(v.correct)) : null,
-          explanation: str(v.explanation) || null, position: cards.length
+          explanation: explanationFrom(v) || null, position: cards.length
         });
         if (error) throw error; await loadLesson(chapterId);
       }, "Carte créée.")
@@ -464,11 +475,11 @@ export default function App() {
       eyebrow: "CARTE · DOJO", title: "Modifier la carte", submitLabel: "Enregistrer",
       intro: `Type : ${card.kind.toUpperCase()}`,
       fields: cardFields(false, count),
-      initial: { kind: card.kind, front: card.front, choices: strings(card.choices ?? [], count), correct: String(card.correct_index ?? 0), back: card.back ?? "", explanation: card.explanation ?? "" },
+      initial: { kind: card.kind, front: card.front, choices: strings(card.choices ?? [], count), correct: String(card.correct_index ?? 0), back: card.back ?? "", ...explanationValues(card.explanation) },
       onSubmit: v => save(async () => {
         const isQcm = card.kind === "qcm";
         const { error } = await supabase.from("cards").update({
-          front: str(v.front), back: str(v.back) || null, explanation: str(v.explanation) || null,
+          front: str(v.front), back: str(v.back) || null, explanation: explanationFrom(v) || null,
           ...(isQcm ? { choices: strings(v.choices, count).map(x => x.trim()), correct_index: Number(str(v.correct)) } : {})
         }).eq("id", card.id);
         if (error) throw error; await loadLesson(chapterId);
