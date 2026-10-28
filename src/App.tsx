@@ -11,6 +11,8 @@ import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
 import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
+import SemanticSettingsManager from "./SemanticSettingsManager";
+import { SlidersHorizontal } from "lucide-react";
 import FirstChallengeComposer from "./FirstChallengeComposer";
 import EntryPage, { type EntrySpec, type FieldDef, type Values } from "./EntryPage";
 import { composeExplanation, splitExplanation } from "./feynman";
@@ -24,7 +26,7 @@ type Capsule = { id: string; chapter_id: string; title: string; body: string; mi
 type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge";
+type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge" | "semantic";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 // Champ facultatif rattaché à la leçon : affiché à l'élève dans un encart repliable en fin de leçon.
 const COMPLEMENT_FIELD: FieldDef = {
@@ -574,6 +576,7 @@ export default function App() {
     { id: "banners" as Section, label: "Explorer · À la une", icon: Sparkles },
     { id: "motivation" as Section, label: "Accueil · Examens & citations", icon: Activity },
     { id: "firstchallenge" as Section, label: "Premier défi · Onboarding", icon: Rocket },
+    { id: "semantic" as Section, label: "Évaluation · Seuils", icon: SlidersHorizontal },
   ];
 
   return (
@@ -619,6 +622,8 @@ export default function App() {
             </div>
             <div className="info-banner"><div className="info-symbol"><Cloud size={21}/></div><div><strong>Une seule source de vérité</strong><p>Les cours et défis publiés ici sont lus par l’application Android via les politiques RLS de Supabase. Les brouillons restent réservés à l’administration.</p></div><ShieldCheck className="info-check" size={22}/></div>
           </section>}
+
+          {section === "semantic" && <SemanticSettingsManager busy={busy} onNotice={setNotice}/>}
 
           {section === "levels" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">CATALOGUE OFFICIEL</div><h2>Classes et séries</h2><p>La liste active publiée ici est celle que l’application Android récupère depuis Supabase. Les identifiants sont conservés pour protéger les relations avec les contenus.</p></div><button className="secondary" onClick={()=>void reloadAll()}><RefreshCw size={16}/> Actualiser</button></div>
