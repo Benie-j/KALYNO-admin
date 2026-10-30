@@ -3,19 +3,19 @@ import { AlertCircle, Copy, RefreshCw, RotateCcw, Save, SlidersHorizontal } from
 import { supabase } from "./lib/supabase";
 
 /** Valeurs et bornes identiques aux contraintes de la table Supabase et à l'application Android. */
-const DEFAULT_VALID = 0.75;
-const DEFAULT_PARTIAL = 0.6;
-const MIN_VALID = 0.6;
-const MAX_VALID = 0.95;
-const MIN_PARTIAL = 0.3;
-const GAP = 0.05;
+const DEFAULT_VALID = 0.95;
+const DEFAULT_PARTIAL = 0.88;
+const MIN_VALID = 0.92;
+const MAX_VALID = 0.99;
+const MIN_PARTIAL = 0.84;
+const GAP = 0.04;
 
 const SETUP_SQL = `create table if not exists public.semantic_settings (
   scope             text primary key,
-  valid_threshold   real not null default 0.75 check (valid_threshold between 0.60 and 0.95),
-  partial_threshold real not null default 0.60 check (partial_threshold between 0.30 and 0.90),
+  valid_threshold   real not null default 0.95 check (valid_threshold between 0.92 and 0.99),
+  partial_threshold real not null default 0.88 check (partial_threshold between 0.84 and 0.95),
   updated_at        timestamptz not null default now(),
-  check (partial_threshold < valid_threshold)
+  check (partial_threshold <= valid_threshold - 0.039)
 );
 
 insert into public.semantic_settings (scope) values ('global') on conflict (scope) do nothing;
@@ -40,9 +40,9 @@ const isMissingTable = (e: { code?: string; message?: string }) =>
   e.code === "PGRST205" || e.code === "42P01" || /semantic_settings/i.test(e.message ?? "");
 
 function profile(valid: number): { label: string; hint: string } {
-  if (valid >= 0.85) return { label: "Très strict", hint: "Seules les reformulations très proches de la réponse attendue sont validées. Risque de refuser des réponses justes mais originales." };
-  if (valid >= 0.75) return { label: "Strict (recommandé)", hint: "Bon équilibre entre rigueur pédagogique et tolérance aux reformulations." };
-  if (valid >= 0.68) return { label: "Souple", hint: "Accepte davantage de reformulations, au prix de quelques réponses approximatives validées." };
+  if (valid >= 0.97) return { label: "Très strict", hint: "Seules les reformulations très proches de la réponse attendue sont validées. Risque de refuser des réponses justes mais originales." };
+  if (valid >= 0.94) return { label: "Strict (recommandé)", hint: "Bon équilibre entre rigueur pédagogique et tolérance aux reformulations." };
+  if (valid >= 0.93) return { label: "Souple", hint: "Accepte davantage de reformulations, au prix de quelques réponses approximatives validées." };
   return { label: "Très souple", hint: "Risque élevé de valider des réponses imprécises. À éviter pour les classes d’examen." };
 }
 
