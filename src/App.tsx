@@ -3,7 +3,7 @@ import type { Session } from "@supabase/supabase-js";
 import {
   Activity, AlertCircle, ArrowDown, ArrowDownUp, ArrowUp, BookOpen, Check, ChevronDown, CircleHelp,
   ClipboardList, Cloud, FileText, GraduationCap, LayoutDashboard, LogOut, Plus,
-  RefreshCw, Rocket, Save, Search, ShieldCheck, Sparkles, Target, Trash2, UploadCloud,
+  Flag, RefreshCw, Rocket, Save, Search, ShieldCheck, Sparkles, Target, Trash2, UploadCloud,
   X
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -12,6 +12,7 @@ import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
 import SemanticSettingsManager from "./SemanticSettingsManager";
+import ReportsManager from "./ReportsManager";
 import { SlidersHorizontal } from "lucide-react";
 import FirstChallengeComposer from "./FirstChallengeComposer";
 import EntryPage, { type EntrySpec, type FieldDef, type Values } from "./EntryPage";
@@ -26,7 +27,7 @@ type Capsule = { id: string; chapter_id: string; title: string; body: string; mi
 type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge" | "semantic";
+type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge" | "semantic" | "reports";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 // Champ facultatif rattaché à la leçon : affiché à l'élève dans un encart repliable en fin de leçon.
 const COMPLEMENT_FIELD: FieldDef = {
@@ -106,6 +107,7 @@ export default function App() {
   const [searchText, setSearchText] = useState("");
   const [counts, setCounts] = useState({ subjects: 0, chapters: 0, capsules: 0, cards: 0, students: 0 });
   const [entry, setEntry] = useState<EntrySpec | null>(null);
+  const [pendingReports, setPendingReports] = useState(0);
   const [capsuleEditor, setCapsuleEditor] = useState<{ capsule: Capsule | null } | null>(null);
 
   const currentLevel = levels.find(x => x.id === levelId);
@@ -228,6 +230,11 @@ export default function App() {
   }, [authorize]);
 
   useEffect(() => { if (session) void reloadAll(); }, [session, reloadAll]);
+  const refreshPendingReports = useCallback(async () => {
+    const { count, error } = await supabase.from("reports").select("id", { count: "exact", head: true }).eq("status", "PENDING");
+    if (!error) setPendingReports(count ?? 0);
+  }, []);
+  useEffect(() => { if (session) void refreshPendingReports(); }, [session, section, refreshPendingReports]);
   useEffect(() => { if (session && levelId) void loadContent(levelId).catch(e => setNotice(errorText(e))); }, [session, levelId, loadContent]);
   useEffect(() => { if (session) void loadChapters(subjectId).catch(e => setNotice(errorText(e))); }, [session, subjectId, loadChapters]);
   useEffect(() => { if (session) void loadLesson(chapterId).catch(e => setNotice(errorText(e))); }, [session, chapterId, loadLesson]);
@@ -577,6 +584,7 @@ export default function App() {
     { id: "motivation" as Section, label: "Accueil · Examens & citations", icon: Activity },
     { id: "firstchallenge" as Section, label: "Premier défi · Onboarding", icon: Rocket },
     { id: "semantic" as Section, label: "Évaluation · Seuils", icon: SlidersHorizontal },
+    { id: "reports" as Section, label: "Signalements élèves", icon: Flag },
   ];
 
   return (
@@ -586,7 +594,7 @@ export default function App() {
         <div className="side-label">ESPACE DE TRAVAIL</div>
         <nav>{nav.map(item => {
           const Icon = item.icon;
-          return <button key={item.id} className={`nav-item ${section===item.id?"active":""}`} onClick={()=>setSection(item.id)}><Icon size={18}/><span>{item.label}</span>{section===item.id&&<span className="nav-active-dot"/>}</button>;
+          return <button key={item.id} className={`nav-item ${section===item.id?"active":""}`} onClick={()=>setSection(item.id)}><Icon size={18}/><span>{item.label}</span>{item.id==="reports"&&pendingReports>0&&<span className="nav-badge">{pendingReports}</span>}{section===item.id&&<span className="nav-active-dot"/>}</button>;
         })}</nav>
         <div className="sidebar-bottom">
           <div className="connection-card"><span className="online-dot"/><div><strong>Supabase connecté</strong><small>Backend KALYNO</small></div></div>
@@ -624,6 +632,11 @@ export default function App() {
           </section>}
 
           {section === "semantic" && <SemanticSettingsManager busy={busy} onNotice={setNotice}/>}
+
+          {section === "reports" && <section className="page">
+            <div className="page-intro"><div><div className="eyebrow">QUALITÉ DU CONTENU</div><h2>Signalements des élèves</h2><p>Les erreurs signalées dans l’application arrivent ici, même celles envoyées hors ligne. Prends-les en charge, corrige le contenu, puis clôture.</p></div></div>
+            <ReportsManager busy={busy} onNotice={setNotice} onChanged={refreshPendingReports}/>
+          </section>}
 
           {section === "levels" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">CATALOGUE OFFICIEL</div><h2>Classes et séries</h2><p>La liste active publiée ici est celle que l’application Android récupère depuis Supabase. Les identifiants sont conservés pour protéger les relations avec les contenus.</p></div><button className="secondary" onClick={()=>void reloadAll()}><RefreshCw size={16}/> Actualiser</button></div>

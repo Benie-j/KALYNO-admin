@@ -226,3 +226,28 @@
 .sem-setup{margin-bottom:16px}
 .sem-sql{padding:0 17px 14px}
 .sem-sql pre{margin:14px 0 0;max-height:300px;overflow:auto;background:#0f1b35;color:#d9e3f8;border-radius:10px;padding:14px;font-size:11px;line-height:1.55}
+
+/* ---------- Signalements des élèves ---------- */
+.rep-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:14px 18px 0}
+.rep-count{display:flex;flex-direction:column;gap:2px;align-items:flex-start;border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;text-align:left}
+.rep-count b{font-size:20px}.rep-count span{font-size:10px;color:#6f7b91;font-weight:700}
+.rep-count.active{border-color:#3b82f6;background:#f2f7ff}
+.rep-filters{display:grid;grid-template-columns:minmax(0,1fr) 170px 150px;gap:12px;padding:14px 18px;align-items:end}
+.rep-filters label{display:flex;flex-direction:column;gap:7px;font-size:10px;color:#6f7b91;font-weight:700}
+.rep-search{margin:0}
+.rep-list{display:flex;flex-direction:column;gap:12px;padding:0 18px 18px}
+.rep-card{border:1px solid var(--line);border-left:4px solid #f0a31a;border-radius:10px;padding:14px;background:#fff;display:flex;flex-direction:column;gap:8px}
+.rep-card.rep-in_review{border-left-color:#3b82f6}.rep-card.rep-resolved{border-left-color:#18845c;opacity:.8}.rep-card.rep-rejected{border-left-color:#9aa5b8;opacity:.75}
+.rep-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rep-source{gap:5px;align-items:center}
+.rep-category{font-size:13px}
+.rep-status{margin-left:auto;font-size:9px;font-weight:700;border-radius:20px;padding:4px 8px;background:#fff5dc;color:#9b741e}
+.rep-status-in_review{background:#e6f0ff;color:#2457b8}.rep-status-resolved{background:#e7f7ef;color:#18845c}.rep-status-rejected{background:#eef0f4;color:#66748c}
+.rep-context{font-size:11px;color:#4b5a74;font-weight:700}
+.rep-description{font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}.rep-empty{color:#9aa5b8;font-style:italic}
+.rep-meta{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:10px;color:#6f7b91}
+.rep-copy{display:inline-flex;align-items:center;gap:4px;border:1px solid #dfe5ef;background:#f7f9fd;border-radius:6px;padding:3px 7px;font-size:10px;color:#4b5a74}
+.rep-actions{display:flex;gap:8px;flex-wrap:wrap}
+.rep-foot{padding:0 18px 16px;font-size:10px;color:#6f7b91}
+@media(max-width:760px){.rep-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.rep-filters{grid-template-columns:1fr}}
+.nav-badge{margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:9px;background:#e5484d;color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center}
