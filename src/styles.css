@@ -251,3 +251,7 @@
 .rep-foot{padding:0 18px 16px;font-size:10px;color:#6f7b91}
 @media(max-width:760px){.rep-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.rep-filters{grid-template-columns:1fr}}
 .nav-badge{margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:9px;background:#e5484d;color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center}
+.rep-note{display:flex;gap:8px;align-items:flex-start;background:#fff9e8;border:1px solid #f6e3a8;border-radius:8px;padding:8px 10px;font-size:11px;color:#6b5314;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.rep-note svg{flex:none;margin-top:2px}
+.rep-note-edit{display:flex;flex-direction:column;gap:8px}
+.rep-note-edit textarea{width:100%;resize:vertical;font:inherit;font-size:12px;border:1px solid #dfe5ef;border-radius:8px;padding:9px}

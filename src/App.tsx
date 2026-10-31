@@ -12,7 +12,7 @@ import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
 import SemanticSettingsManager from "./SemanticSettingsManager";
-import ReportsManager from "./ReportsManager";
+import ReportsManager, { isWelcomeReport, type ReportSourceRef } from "./ReportsManager";
 import { SlidersHorizontal } from "lucide-react";
 import FirstChallengeComposer from "./FirstChallengeComposer";
 import EntryPage, { type EntrySpec, type FieldDef, type Values } from "./EntryPage";
@@ -235,6 +235,32 @@ export default function App() {
     if (!error) setPendingReports(count ?? 0);
   }, []);
   useEffect(() => { if (session) void refreshPendingReports(); }, [session, section, refreshPendingReports]);
+
+  /** Ouvre l’élément signalé : le chapitre (leçon ou exercice du Dojo) ou le premier défi. */
+  const openReportSource = useCallback(async (ref: ReportSourceRef) => {
+    if (isWelcomeReport(ref)) { setSection("firstchallenge"); return; }
+    if (!ref.source_id) return;
+    try {
+      let chapter = ref.source_id;
+      if (ref.source_type === "EXERCISE") {
+        const card = await supabase.from("cards").select("chapter_id").eq("id", ref.source_id).maybeSingle();
+        if (card.error) throw card.error;
+        if (!card.data) { setNotice("Échec : cet exercice n’existe plus dans le catalogue (carte supprimée ou renumérotée)."); return; }
+        chapter = (card.data as { chapter_id: string }).chapter_id;
+      }
+      const ch = await supabase.from("chapters").select("id,subject_id").eq("id", chapter).maybeSingle();
+      if (ch.error) throw ch.error;
+      if (!ch.data) { setNotice("Échec : cette leçon n’existe plus dans le catalogue."); return; }
+      const sub = await supabase.from("subjects").select("id,level_id").eq("id", (ch.data as { subject_id: string }).subject_id).maybeSingle();
+      if (sub.error) throw sub.error;
+      if (!sub.data) { setNotice("Échec : la discipline de cet élément est introuvable."); return; }
+      // Les chargeurs gardent la sélection si elle existe : classe, discipline et chapitre se posent d’un coup.
+      setLevelId((sub.data as { level_id: string }).level_id);
+      setSubjectId((sub.data as { id: string }).id);
+      setChapterId((ch.data as { id: string }).id);
+      setSection("courses");
+    } catch (e) { setNotice(errorText(e)); }
+  }, []);
   useEffect(() => { if (session && levelId) void loadContent(levelId).catch(e => setNotice(errorText(e))); }, [session, levelId, loadContent]);
   useEffect(() => { if (session) void loadChapters(subjectId).catch(e => setNotice(errorText(e))); }, [session, subjectId, loadChapters]);
   useEffect(() => { if (session) void loadLesson(chapterId).catch(e => setNotice(errorText(e))); }, [session, chapterId, loadLesson]);
@@ -635,7 +661,7 @@ export default function App() {
 
           {section === "reports" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">QUALITÉ DU CONTENU</div><h2>Signalements des élèves</h2><p>Les erreurs signalées dans l’application arrivent ici, même celles envoyées hors ligne. Prends-les en charge, corrige le contenu, puis clôture.</p></div></div>
-            <ReportsManager busy={busy} onNotice={setNotice} onChanged={refreshPendingReports}/>
+            <ReportsManager busy={busy} onNotice={setNotice} onChanged={refreshPendingReports} onOpenSource={ref=>void openReportSource(ref)}/>
           </section>}
 
           {section === "levels" && <section className="page">

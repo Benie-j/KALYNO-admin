@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Check, Copy, Eye, Flag, RefreshCw, RotateCcw, Search, Settings, X } from "lucide-react";
+import { BookOpen, Check, Copy, ExternalLink, Eye, Flag, RefreshCw, RotateCcw, Search, Settings, StickyNote, X } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
 type SourceType = "LESSON" | "EXERCISE" | "SETTINGS";
@@ -33,15 +33,30 @@ const CATEGORY_LABEL: Record<string, string> = {
   SYNC_PROBLEM: "Problème de synchronisation"
 };
 
-type Props = { busy: boolean; onNotice: (s: string) => void; onChanged?: () => void };
+export type ReportSourceRef = { source_type: SourceType; source_id: string | null; context_label: string | null };
 
-export default function ReportsManager({ busy, onNotice, onChanged }: Props) {
+/** Vrai si le signalement vient du premier exercice (exercice de bienvenue) : le libellé est posé par l’appli. */
+export const isWelcomeReport = (r: ReportSourceRef) => r.source_type === "EXERCISE" && (r.context_label ?? "").startsWith("Exercice de bienvenue");
+
+type Props = {
+  busy: boolean;
+  onNotice: (s: string) => void;
+  onChanged?: () => void;
+  /** Ouvre l’élément signalé dans l’éditeur de contenu correspondant. */
+  onOpenSource: (ref: ReportSourceRef) => void;
+};
+
+export default function ReportsManager({ busy, onNotice, onChanged, onOpenSource }: Props) {
   const [rows, setRows] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"OPEN" | "ALL" | Status>("OPEN");
   const [sourceFilter, setSourceFilter] = useState<"ALL" | SourceType>("ALL");
   const [text, setText] = useState("");
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [notesReady, setNotesReady] = useState(true);
+  const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,7 +70,31 @@ export default function ReportsManager({ busy, onNotice, onChanged }: Props) {
     setRows((data ?? []) as Report[]);
   }, [onNotice]);
 
-  useEffect(() => { void load(); }, [load]);
+  const loadNotes = useCallback(async () => {
+    const { data, error } = await supabase.from("report_notes").select("report_id,note").limit(PAGE_LIMIT * 2);
+    if (error) { setNotesReady(false); return; }
+    setNotesReady(true);
+    const map: Record<string, string> = {};
+    for (const n of (data ?? []) as { report_id: string; note: string }[]) map[n.report_id] = n.note;
+    setNotes(map);
+  }, []);
+
+  useEffect(() => { void load(); void loadNotes(); }, [load, loadNotes]);
+
+  function startNote(report: Report) { setEditingNote(report.id); setNoteDraft(notes[report.id] ?? ""); }
+
+  async function saveNote(report: Report) {
+    const note = noteDraft.trim().slice(0, 2000);
+    setSavingId(report.id); onNotice("");
+    try {
+      // Upsert : une note par signalement. Effacer = enregistrer un texte vide (rien n’est supprimé).
+      const { error } = await supabase.from("report_notes").upsert({ report_id: report.id, note, updated_at: new Date().toISOString() }, { onConflict: "report_id" });
+      if (error) throw error;
+      setNotes(n => ({ ...n, [report.id]: note }));
+      setEditingNote(null);
+      onNotice("Note enregistrée.");
+    } catch (e) { onNotice("Échec : " + errText(e)); } finally { setSavingId(null); }
+  }
 
   async function setStatus(report: Report, status: Status) {
     setSavingId(report.id); onNotice("");
@@ -91,13 +130,15 @@ export default function ReportsManager({ busy, onNotice, onChanged }: Props) {
     });
   }, [rows, statusFilter, sourceFilter, text]);
 
+  const canOpen = (r: Report) => isWelcomeReport(r) || ((r.source_type === "LESSON" || r.source_type === "EXERCISE") && !!r.source_id);
+
   const SourceIcon = ({ type }: { type: SourceType }) =>
     type === "LESSON" ? <BookOpen size={13} /> : type === "SETTINGS" ? <Settings size={13} /> : <Flag size={13} />;
 
   return <div className="panel">
     <div className="panel-heading">
       <div><h3>Signalements des élèves</h3><p>Erreurs signalées depuis les leçons, les exercices et les paramètres. Rien n’est supprimé : un signalement se clôture.</p></div>
-      <button className="secondary" type="button" onClick={() => void load()} disabled={loading || busy}><RefreshCw size={15} /> Actualiser</button>
+      <button className="secondary" type="button" onClick={() => { void load(); void loadNotes(); }} disabled={loading || busy}><RefreshCw size={15} /> Actualiser</button>
     </div>
 
     <div className="rep-counts">
@@ -142,7 +183,16 @@ export default function ReportsManager({ busy, onNotice, onChanged }: Props) {
             <span title={r.user_id}>Élève {r.user_id.slice(0, 8)}</span>
             {r.source_id && <button type="button" className="rep-copy" title="Copier l’identifiant de l’élément signalé" onClick={() => void copy(r.source_id!)}><Copy size={12} /> {r.source_id.slice(0, 8)}</button>}
           </div>
+          {editingNote === r.id ? <div className="rep-note-edit">
+            <textarea value={noteDraft} maxLength={2000} rows={3} placeholder="Note interne (jamais visible par l’élève)…" onChange={e => setNoteDraft(e.target.value)} />
+            <div className="rep-actions">
+              <button className="small-primary" type="button" disabled={disabled} onClick={() => void saveNote(r)}><Check size={14} /> Enregistrer la note</button>
+              <button className="secondary" type="button" disabled={disabled} onClick={() => setEditingNote(null)}>Annuler</button>
+            </div>
+          </div> : notes[r.id] ? <div className="rep-note"><StickyNote size={13} /><span>{notes[r.id]}</span></div> : null}
           <div className="rep-actions">
+            {canOpen(r) && <button className="secondary" type="button" disabled={disabled} onClick={() => onOpenSource(r)}><ExternalLink size={14} /> {isWelcomeReport(r) ? "Ouvrir le premier défi" : "Ouvrir dans les cours"}</button>}
+            {notesReady && editingNote !== r.id && <button className="secondary" type="button" disabled={disabled} onClick={() => startNote(r)}><StickyNote size={14} /> {notes[r.id] ? "Modifier la note" : "Ajouter une note"}</button>}
             {r.status === "PENDING" && <button className="secondary" type="button" disabled={disabled} onClick={() => void setStatus(r, "IN_REVIEW")}><Eye size={14} /> Prendre en charge</button>}
             {!closed && <button className="small-primary" type="button" disabled={disabled} onClick={() => void setStatus(r, "RESOLVED")}><Check size={14} /> Résolu</button>}
             {!closed && <button className="secondary" type="button" disabled={disabled} onClick={() => void setStatus(r, "REJECTED")}><X size={14} /> Rejeter</button>}
@@ -150,6 +200,7 @@ export default function ReportsManager({ busy, onNotice, onChanged }: Props) {
           </div>
         </article>;
       })}</div>}
+    {!notesReady && <div className="rep-foot">Notes internes indisponibles : passe le script 20261101_signalements_notes.sql dans Supabase.</div>}
     {rows.length >= PAGE_LIMIT && <div className="rep-foot">Les {PAGE_LIMIT} signalements les plus récents sont affichés.</div>}
   </div>;
 }
