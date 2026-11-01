@@ -1,0 +1,8 @@
+/* Réponse de l'équipe à l'élève (écran Signalements élèves) */
+.rep-reply{display:flex;flex-direction:column;gap:6px;background:#eaf6f0;border:1px solid #c7e8d8;border-radius:8px;padding:9px 11px;font-size:11px;color:#14573e;line-height:1.5}
+.rep-reply b{font-size:9px;letter-spacing:.6px}
+.rep-reply span{white-space:pre-wrap;overflow-wrap:anywhere}
+.rep-reply small{font-size:9px;color:#4f7f6b}
+.rep-reply-edit{display:flex;flex-direction:column;gap:8px}
+.rep-reply-edit textarea{width:100%;resize:vertical;font:inherit;font-size:12px;border:1px solid #bfe3d0;border-radius:8px;padding:9px}
+.rep-reply-edit small{font-size:10px;color:#6f7b91}

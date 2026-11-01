@@ -11,6 +11,7 @@ import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
 import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
+import FaqManager from "./FaqManager";
 import SemanticSettingsManager from "./SemanticSettingsManager";
 import ReportsManager, { isWelcomeReport, type ReportSourceRef } from "./ReportsManager";
 import { SlidersHorizontal } from "lucide-react";
@@ -27,7 +28,7 @@ type Capsule = { id: string; chapter_id: string; title: string; body: string; mi
 type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge" | "semantic" | "reports";
+type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge" | "semantic" | "reports" | "faq";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 // Champ facultatif rattaché à la leçon : affiché à l'élève dans un encart repliable en fin de leçon.
 const COMPLEMENT_FIELD: FieldDef = {
@@ -611,6 +612,7 @@ export default function App() {
     { id: "firstchallenge" as Section, label: "Premier défi · Onboarding", icon: Rocket },
     { id: "semantic" as Section, label: "Évaluation · Seuils", icon: SlidersHorizontal },
     { id: "reports" as Section, label: "Signalements élèves", icon: Flag },
+    { id: "faq" as Section, label: "Centre d’aide · FAQ", icon: CircleHelp },
   ];
 
   return (
@@ -662,6 +664,11 @@ export default function App() {
           {section === "reports" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">QUALITÉ DU CONTENU</div><h2>Signalements des élèves</h2><p>Les erreurs signalées dans l’application arrivent ici, même celles envoyées hors ligne. Prends-les en charge, corrige le contenu, puis clôture.</p></div></div>
             <ReportsManager busy={busy} onNotice={setNotice} onChanged={refreshPendingReports} onOpenSource={ref=>void openReportSource(ref)}/>
+          </section>}
+
+          {section === "faq" && <section className="page">
+            <div className="page-intro"><div><div className="eyebrow">AIDE DE L’APPLICATION</div><h2>Centre d’aide & FAQ</h2><p>Les questions et réponses affichées dans Profil › Centre d’aide & FAQ. Tout ce que tu écris ici arrive sur le téléphone des élèves, sans mise à jour de l’app.</p></div></div>
+            <FaqManager busy={busy} onNotice={setNotice}/>
           </section>}
 
           {section === "levels" && <section className="page">

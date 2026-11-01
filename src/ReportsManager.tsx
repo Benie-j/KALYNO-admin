@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Check, Copy, ExternalLink, Eye, Flag, RefreshCw, RotateCcw, Search, Settings, StickyNote, X } from "lucide-react";
+import { BookOpen, Check, Copy, ExternalLink, Eye, Flag, MessageSquare, RefreshCw, RotateCcw, Search, Settings, StickyNote, X } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import "./reports.css";
 
 type SourceType = "LESSON" | "EXERCISE" | "SETTINGS";
 type Status = "PENDING" | "IN_REVIEW" | "RESOLVED" | "REJECTED";
@@ -14,6 +15,8 @@ type Report = {
   context_label: string | null;
   status: Status;
   created_at: string;
+  team_reply?: string | null;
+  team_replied_at?: string | null;
 };
 
 const PAGE_LIMIT = 500;
@@ -57,17 +60,22 @@ export default function ReportsManager({ busy, onNotice, onChanged, onOpenSource
   const [notesReady, setNotesReady] = useState(true);
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [repliesReady, setRepliesReady] = useState(true);
+  const [editingReply, setEditingReply] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("reports")
-      .select("id,user_id,source_type,source_id,category,description,context_label,status,created_at")
-      .order("created_at", { ascending: false })
-      .limit(PAGE_LIMIT);
+    const base: string = "id,user_id,source_type,source_id,category,description,context_label,status,created_at";
+    const withReplies = await supabase.from("reports").select(base + ",team_reply,team_replied_at").order("created_at", { ascending: false }).limit(PAGE_LIMIT);
+    // Colonnes de réponse absentes (script 20261102 pas encore passé) : on lit sans elles
+    const result = withReplies.error
+      ? await supabase.from("reports").select(base).order("created_at", { ascending: false }).limit(PAGE_LIMIT)
+      : withReplies;
     setLoading(false);
-    if (error) { onNotice("Échec : " + errText(error) + " — le script 20261031_signalements.sql est-il passé dans Supabase ?"); return; }
-    setRows((data ?? []) as Report[]);
+    setRepliesReady(!withReplies.error);
+    if (result.error) { onNotice("Échec : " + errText(result.error) + " — le script 20261031_signalements.sql est-il passé dans Supabase ?"); return; }
+    setRows((result.data ?? []) as unknown as Report[]);
   }, [onNotice]);
 
   const loadNotes = useCallback(async () => {
@@ -80,6 +88,22 @@ export default function ReportsManager({ busy, onNotice, onChanged, onOpenSource
   }, []);
 
   useEffect(() => { void load(); void loadNotes(); }, [load, loadNotes]);
+
+  function startReply(report: Report) { setEditingReply(report.id); setReplyDraft(report.team_reply ?? ""); }
+
+  async function saveReply(report: Report) {
+    const reply = replyDraft.trim().slice(0, 1000);
+    if (!reply) { onNotice("Échec : écris une réponse avant d’enregistrer."); return; }
+    setSavingId(report.id); onNotice("");
+    try {
+      const repliedAt = new Date().toISOString();
+      const { error } = await supabase.from("reports").update({ team_reply: reply, team_replied_at: repliedAt }).eq("id", report.id);
+      if (error) throw error;
+      setRows(list => list.map(r => r.id === report.id ? { ...r, team_reply: reply, team_replied_at: repliedAt } : r));
+      setEditingReply(null);
+      onNotice("Réponse enregistrée. L’élève la voit dans « Mes signalements » à sa prochaine actualisation.");
+    } catch (e) { onNotice("Échec : " + errText(e)); } finally { setSavingId(null); }
+  }
 
   function startNote(report: Report) { setEditingNote(report.id); setNoteDraft(notes[report.id] ?? ""); }
 
@@ -183,6 +207,14 @@ export default function ReportsManager({ busy, onNotice, onChanged, onOpenSource
             <span title={r.user_id}>Élève {r.user_id.slice(0, 8)}</span>
             {r.source_id && <button type="button" className="rep-copy" title="Copier l’identifiant de l’élément signalé" onClick={() => void copy(r.source_id!)}><Copy size={12} /> {r.source_id.slice(0, 8)}</button>}
           </div>
+          {editingReply === r.id ? <div className="rep-reply-edit">
+            <textarea value={replyDraft} maxLength={1000} rows={3} placeholder="Réponse visible par l’élève dans l’application…" onChange={e => setReplyDraft(e.target.value)} />
+            <small>Écris pour l’élève : ni nom, ni détail interne. Elle ne s’affiche que si l’élève avait un compte connecté.</small>
+            <div className="rep-actions">
+              <button className="small-primary" type="button" disabled={disabled} onClick={() => void saveReply(r)}><Check size={14} /> Envoyer la réponse</button>
+              <button className="secondary" type="button" disabled={disabled} onClick={() => setEditingReply(null)}>Annuler</button>
+            </div>
+          </div> : r.team_reply ? <div className="rep-reply"><b>RÉPONSE ENVOYÉE À L’ÉLÈVE</b><span>{r.team_reply}</span>{r.team_replied_at && <small>{new Date(r.team_replied_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</small>}</div> : null}
           {editingNote === r.id ? <div className="rep-note-edit">
             <textarea value={noteDraft} maxLength={2000} rows={3} placeholder="Note interne (jamais visible par l’élève)…" onChange={e => setNoteDraft(e.target.value)} />
             <div className="rep-actions">
@@ -192,6 +224,7 @@ export default function ReportsManager({ busy, onNotice, onChanged, onOpenSource
           </div> : notes[r.id] ? <div className="rep-note"><StickyNote size={13} /><span>{notes[r.id]}</span></div> : null}
           <div className="rep-actions">
             {canOpen(r) && <button className="secondary" type="button" disabled={disabled} onClick={() => onOpenSource(r)}><ExternalLink size={14} /> {isWelcomeReport(r) ? "Ouvrir le premier défi" : "Ouvrir dans les cours"}</button>}
+            {repliesReady && editingReply !== r.id && <button className="secondary" type="button" disabled={disabled} onClick={() => startReply(r)}><MessageSquare size={14} /> {r.team_reply ? "Modifier la réponse" : "Répondre à l’élève"}</button>}
             {notesReady && editingNote !== r.id && <button className="secondary" type="button" disabled={disabled} onClick={() => startNote(r)}><StickyNote size={14} /> {notes[r.id] ? "Modifier la note" : "Ajouter une note"}</button>}
             {r.status === "PENDING" && <button className="secondary" type="button" disabled={disabled} onClick={() => void setStatus(r, "IN_REVIEW")}><Eye size={14} /> Prendre en charge</button>}
             {!closed && <button className="small-primary" type="button" disabled={disabled} onClick={() => void setStatus(r, "RESOLVED")}><Check size={14} /> Résolu</button>}
@@ -200,6 +233,7 @@ export default function ReportsManager({ busy, onNotice, onChanged, onOpenSource
           </div>
         </article>;
       })}</div>}
+    {!repliesReady && <div className="rep-foot">Réponses aux élèves indisponibles : passe le script 20261102_signalements_reponse_equipe.sql dans Supabase.</div>}
     {!notesReady && <div className="rep-foot">Notes internes indisponibles : passe le script 20261101_signalements_notes.sql dans Supabase.</div>}
     {rows.length >= PAGE_LIMIT && <div className="rep-foot">Les {PAGE_LIMIT} signalements les plus récents sont affichés.</div>}
   </div>;
