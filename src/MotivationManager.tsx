@@ -12,7 +12,7 @@ const emptyQuote: QuoteDraft = { content: "", author: "", level_id: "", position
 const errText = (e: unknown) => e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : String(e);
 const daysLeft = (iso: string) => Math.round((new Date(iso + "T00:00:00").getTime() - new Date(new Date().toDateString()).getTime()) / 86400000);
 
-type Props = { levels: LevelRef[]; busy: boolean; onNotice: (s: string) => void };
+type Props = { levels: LevelRef[]; catalog?: LevelRef[]; busy: boolean; onNotice: (s: string) => void };
 
 /* ---------- Date d’examen de chaque classe (compte à rebours de l’accueil élève) ---------- */
 function ExamDates({ levels, busy, onNotice }: Props) {
@@ -89,7 +89,7 @@ function ExamDates({ levels, busy, onNotice }: Props) {
 }
 
 /* ---------- Citation du jour (tourne chaque jour parmi les citations actives) ---------- */
-function Quotes({ levels, busy, onNotice }: Props) {
+function Quotes({ levels, catalog, busy, onNotice }: Props) {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [draft, setDraft] = useState<QuoteDraft>(emptyQuote);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -103,7 +103,7 @@ function Quotes({ levels, busy, onNotice }: Props) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const levelLabel = (id: string | null) => id === null ? "Toutes les classes" : levels.find(x => x.id === id)?.label ?? id;
+  const levelLabel = (id: string | null) => id === null ? "Toutes les classes" : (catalog ?? levels).find(x => x.id === id)?.label ?? id;
   function reset() { setEditingId(null); setDraft({ ...emptyQuote, position: String(quotes.length) }); }
 
   async function submit(event: FormEvent) {
@@ -158,6 +158,7 @@ function Quotes({ levels, busy, onNotice }: Props) {
         <label>Visible pour<select value={draft.level_id} onChange={e => setDraft(d => ({ ...d, level_id: e.target.value }))}>
           <option value="">Toutes les classes</option>
           {levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}
+          {draft.level_id && !levels.some(x => x.id === draft.level_id) && <option value={draft.level_id}>{levelLabel(draft.level_id)} (désactivée)</option>}
         </select></label>
         <label className="levels-active"><input type="checkbox" checked={draft.is_active} onChange={e => setDraft(d => ({ ...d, is_active: e.target.checked }))} /><span><strong>Active</strong><small>Une citation désactivée n’est plus proposée aux élèves.</small></span></label>
       </div>

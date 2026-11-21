@@ -112,6 +112,8 @@ export default function App() {
   const [capsuleEditor, setCapsuleEditor] = useState<{ capsule: Capsule | null } | null>(null);
 
   const currentLevel = levels.find(x => x.id === levelId);
+  // Catalogue complet dans `levels` ; menus de travail = classes actives uniquement.
+  const activeLevels = useMemo(() => levels.filter(x => x.is_active === true), [levels]);
   const currentSubject = subjects.find(x => x.id === subjectId);
   const currentChapter = chapters.find(x => x.id === chapterId);
 
@@ -120,7 +122,11 @@ export default function App() {
     if (error) throw error;
     const rows = (data ?? []) as Level[];
     setLevels(rows);
-    setLevelId(previous => rows.some(x => x.id === previous) ? previous : (rows[0]?.id ?? ""));
+    const active = rows.filter(x => x.is_active === true);
+    setLevelId(previous =>
+      active.some(x => x.id === previous) ? previous
+      : active.some(x => x.id === "TLE_A3") ? "TLE_A3"
+      : (active[0]?.id ?? ""));
   }, []);
 
   const loadContent = useCallback(async (activeLevel: string) => {
@@ -538,6 +544,8 @@ export default function App() {
   function bannerSpec(banner: Banner | null): EntrySpec {
     const chapterOptions = [{ value: "", label: "Aucune destination" }, ...chapters.map(c => ({ value: c.id, label: c.title }))];
     if (banner?.chapter_id && !chapterOptions.some(o => o.value === banner.chapter_id)) chapterOptions.push({ value: banner.chapter_id, label: "Chapitre déjà associé" });
+    const levelOptions = [{ value: "", label: "Toutes les classes" }, ...activeLevels.map(l => ({ value: l.id, label: l.label }))];
+    if (banner?.level_id && !levelOptions.some(o => o.value === banner.level_id)) levelOptions.push({ value: banner.level_id, label: `${levels.find(l => l.id === banner.level_id)?.label ?? banner.level_id} (désactivée)` });
     return {
       eyebrow: "BANNIÈRE EXPLORER", title: banner ? "Modifier la bannière" : "Nouvelle bannière", submitLabel: banner ? "Enregistrer" : "Créer la bannière",
       intro: banner ? undefined : "La bannière est créée en brouillon : active-la quand elle est prête.",
@@ -545,7 +553,7 @@ export default function App() {
         { kind: "text", key: "title", label: "Titre de la bannière", required: true, max: 80, preview: "title" },
         { kind: "text", key: "subtitle", label: "Sous-titre (facultatif)", max: 140 },
         { kind: "text", key: "button_label", label: "Texte du bouton (facultatif)", max: 30 },
-        { kind: "select", key: "level_id", label: "Classe cible", options: [{ value: "", label: "Toutes les classes" }, ...levels.map(l => ({ value: l.id, label: l.label }))] },
+        { kind: "select", key: "level_id", label: "Classe cible", options: levelOptions },
         { kind: "select", key: "chapter_id", label: "Chapitre à ouvrir", options: chapterOptions, help: "Seuls les chapitres de la discipline sélectionnée sont proposés." }
       ],
       initial: banner
@@ -678,13 +686,13 @@ export default function App() {
 
           {section === "motivation" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">ACCUEIL DE L’APPLICATION</div><h2>Examens et citations</h2><p>La date d’examen alimente le compte à rebours de l’accueil élève ; la citation du jour tourne chaque jour parmi les citations actives.</p></div></div>
-            <MotivationManager levels={levels} busy={busy} onNotice={setNotice}/>
+            <MotivationManager levels={activeLevels} catalog={levels} busy={busy} onNotice={setNotice}/>
           </section>}
 
           {section === "themes" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">ORGANISATION DES LEÇONS</div><h2>Thèmes d’une discipline</h2><p>Regroupe les leçons d’une discipline en thèmes. L’élève les voit dans l’Explorer, dans l’ordre des positions.</p></div></div>
             <div className="selector-row">
-              <label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{levels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
+              <label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{activeLevels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
               <label>Discipline<select value={subjectId} onChange={e=>setSubjectId(e.target.value)}><option value="">Choisir une discipline</option>{subjects.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
             </div>
             <ThemesManager subjectId={subjectId} busy={busy} onNotice={setNotice}/>
@@ -693,7 +701,7 @@ export default function App() {
           {section === "courses" && <section className="page">
             <div className="page-intro"><div><div className="eyebrow">CONTENU PÉDAGOGIQUE</div><h2>Construire le parcours élève</h2><p>Choisis une classe, puis une discipline et un chapitre pour gérer son contenu.</p></div><button className="secondary" onClick={()=>void reloadAll()}><RefreshCw size={16}/> Actualiser</button></div>
             <div className="selector-row">
-              <label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{levels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
+              <label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{activeLevels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
               <label>Discipline<select value={subjectId} onChange={e=>setSubjectId(e.target.value)}><option value="">Choisir une discipline</option>{subjects.map(x=><option key={x.id} value={x.id}>{x.emoji ?? "📘"} {x.name}</option>)}</select></label>
               <label>Chapitre<select value={chapterId} onChange={e=>setChapterId(e.target.value)}><option value="">Choisir un chapitre</option>{chapters.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select></label>
             </div>
@@ -727,7 +735,7 @@ export default function App() {
             {banners.length===0?<Empty text="Aucune bannière enregistrée dans Supabase. Il n’y a pas de contenu de démonstration."/>:<div className="banner-list">{banners.map(banner=><article className={`banner-card ${banner.is_active?"banner-live":""}`} key={banner.id}><div className="banner-art"><Sparkles size={22}/><span>EXPLORER</span></div><div className="banner-copy"><div className="banner-meta"><Status status={banner.is_active?"published":"draft"}/><span>{banner.level_id?levels.find(l=>l.id===banner.level_id)?.label??banner.level_id:"Toutes les classes"}</span></div><h3>{banner.title}</h3><p>{banner.subtitle||"Sans sous-titre"}</p><small>{banner.button_label?`Bouton : ${banner.button_label}`:"Bannière informative"} · {banner.chapter_id?"Chapitre associé":"Aucune destination"}</small></div><div className="banner-actions"><button className="secondary" onClick={()=>void editBanner(banner)}>Modifier</button><button className={banner.is_active?"secondary":"small-primary"} onClick={()=>void toggleBanner(banner)}>{banner.is_active?"Désactiver":"Publier"}</button><button className="icon-button danger" onClick={()=>void deleteBanner(banner)} title="Supprimer"><Trash2 size={16}/></button></div></article>)}</div>}
           </section>}
 
-          {section === "firstchallenge" && <FirstChallengeComposer levels={levels} levelId={levelId} onLevelChange={setLevelId} onNotice={setNotice} />}
+          {section === "firstchallenge" && <FirstChallengeComposer levels={activeLevels} levelId={levelId} onLevelChange={setLevelId} onNotice={setNotice} />}
 
 
         </div>
