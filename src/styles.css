@@ -276,3 +276,79 @@
 .mp-toggle{width:100%;display:flex;align-items:baseline;gap:10px;border:0;background:#fff;padding:11px 14px;text-align:left;color:#202b45}
 .mp-toggle strong{font-size:13px}.mp-toggle span{font-size:11px;color:#7a879d;flex:1}.mp-toggle .tool-chevron{align-self:center}
 .mp-toggle.on{border-bottom:1px solid #e7ebf3}
+
+/* KALYNO - tableaux pedagogiques */
+.rich-editor table,
+.preview-box table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: inherit;
+}
+
+.rich-editor table[border] td,
+.rich-editor table[border] th,
+.preview-box table[border] td,
+.preview-box table[border] th {
+  border: 1px solid #6b7890;
+}
+
+.rich-editor td,
+.rich-editor th,
+.preview-box td,
+.preview-box th {
+  padding: 7px 9px;
+  min-width: 35px;
+}
+
+.table-tool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #edf0f6;
+  background: #fbfcff;
+}
+
+.table-tool label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #6f7b91;
+}
+
+.table-tool input[type="number"] {
+  width: 64px;
+  border: 1px solid #dfe5ef;
+  border-radius: 8px;
+  padding: 7px;
+  font-size: 12px;
+}
+
+.table-tool .table-tool-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-tool small {
+  flex-basis: 100%;
+  font-size: 10px;
+  color: #8995a8;
+}
+
+.rich-editor {
+  overflow-wrap: anywhere;
+}
+
+.rich-editor table {
+  max-width: 100%;
+}
+
+.preview-box {
+  overflow-x: auto;
+}
+

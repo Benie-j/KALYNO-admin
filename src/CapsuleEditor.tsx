@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import katex from "katex";
 import {
   Bold, Italic, Underline, Strikethrough, List, ListOrdered, Heading2, Superscript, Subscript,
-  Quote, Eraser, Sigma, Palette, Square, X, Save, Highlighter, Eye, ChevronDown
+  Quote, Eraser, Sigma, Palette, Square, X, Save, Highlighter, Eye, ChevronDown, Table as TableIcon
 } from "lucide-react";
 import { ColorPanel, MathKeyboard, PH, PRESETS, PresetBar, type Preset } from "./FormatKit";
 
@@ -28,12 +28,28 @@ function rgbToHex(value: string): string {
       "#" + [r, g, b].map(n => Math.min(255, Number(n)).toString(16).padStart(2, "0")).join(""));
 }
 
+// Attributs de tableau conservés, avec des valeurs strictement validées.
+function keepTableAttr(tag: string, name: string, value: string): boolean {
+  const v = value.trim().toLowerCase();
+  const cell = tag === "TD" || tag === "TH";
+  if (cell && (name === "rowspan" || name === "colspan")) return /^\d{1,2}$/.test(v);
+  if (cell && name === "align") return /^(left|center|right)$/.test(v);
+  if (cell && name === "valign") return /^(top|middle|bottom)$/.test(v);
+  if (cell && name === "width") return /^\d{1,3}%?$/.test(v);
+  if (cell && name === "data-answer") return value.length <= 80;
+  if (tag === "TABLE" && name === "border") return /^\d$/.test(v);
+  if (tag === "TABLE" && name === "width") return /^\d{1,3}%?$/.test(v);
+  if (tag === "TABLE" && name === "data-kalyno") return v === "exercise";
+  return false;
+}
+
 function cleanHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const allowed = new Set([
     "P", "DIV", "BR", "STRONG", "B", "EM", "I", "U", "S", "STRIKE", "DEL",
     "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE",
-    "SPAN", "MARK", "SUB", "SUP"
+    "SPAN", "MARK", "SUB", "SUP",
+    "TABLE", "THEAD", "TBODY", "TFOOT", "TR", "TH", "TD", "CAPTION"
   ]);
 
   doc.querySelectorAll("script,style,iframe,object,embed,form,svg,math")
@@ -50,11 +66,17 @@ function cleanHtml(html: string): string {
           .filter(part => /^(color|background-color)\s*:\s*#[0-9a-f]{3,6}$/i.test(part)
             || /^border\s*:\s*\d+px\s+solid\s+#[0-9a-f]{3,6}$/i.test(part)
             || /^padding\s*:\s*\d+px$/i.test(part)
-            || /^border-radius\s*:\s*\d+px$/i.test(part))
+            || /^border-radius\s*:\s*\d+px$/i.test(part)
+            || /^border-width\s*:\s*\d+px$/i.test(part)
+            || /^border-color\s*:\s*#[0-9a-f]{3,6}$/i.test(part)
+            || /^text-align\s*:\s*(left|center|right)$/i.test(part)
+            || /^vertical-align\s*:\s*(top|middle|bottom)$/i.test(part)
+            || /^width\s*:\s*\d{1,3}(px|%)$/i.test(part)
+            || /^font-weight\s*:\s*bold$/i.test(part))
           .join("; ");
         if (safe) node.setAttribute("style", safe);
         else node.removeAttribute("style");
-      } else {
+      } else if (!keepTableAttr(node.tagName, attr.name.toLowerCase(), attr.value)) {
         node.removeAttribute(attr.name);
       }
     }
@@ -146,7 +168,8 @@ export default function CapsuleEditor({
   const [minutes, setMinutes] = useState(initial.minutes);
   const [priority, setPriority] = useState(initial.is_high_yield);
   // Tous les panneaux d'aide sont repliés : l'éditeur ne les déplie qu'au clic.
-  const [tools, setTools] = useState({ math: false, color: false, presets: false, preview: false });
+  const [tools, setTools] = useState({ math: false, color: false, presets: false, table: false, preview: false });
+  const [grid, setGrid] = useState({ rows: 3, cols: 3, header: true });
   const toggleTool = (key: keyof typeof tools) => setTools(t => ({ ...t, [key]: !t[key] }));
   const [tick, setTick] = useState(0);
   const [preview, setPreview] = useState("");
@@ -206,6 +229,26 @@ export default function CapsuleEditor({
       block.style.padding = "8px";
       block.style.borderRadius = "8px";
     }
+    setTick(n => n + 1);
+  }
+
+  // Insère un tableau vide (bordure fine) au curseur ; les cellules sont remplies directement dans l'éditeur.
+  function insertTable() {
+    const root = editorRef.current;
+    if (!root) return;
+    root.focus();
+    const selection = window.getSelection();
+    if (selection && savedRange.current && !root.contains(selection.anchorNode)) {
+      selection.removeAllRanges();
+      selection.addRange(savedRange.current);
+    }
+    const rows = Math.min(12, Math.max(1, grid.rows));
+    const cols = Math.min(8, Math.max(1, grid.cols));
+    const cell = (tag: string) => `<${tag}>&nbsp;</${tag}>`;
+    const line = (tag: string) => `<tr>${Array.from({ length: cols }, () => cell(tag)).join("")}</tr>`;
+    const head = grid.header ? `<thead>${line("th")}</thead>` : "";
+    const body = `<tbody>${Array.from({ length: grid.header ? rows - 1 : rows }, () => line("td")).join("")}</tbody>`;
+    document.execCommand("insertHTML", false, `<table border="1">${head}${body}</table><p><br></p>`);
     setTick(n => n + 1);
   }
 
@@ -409,10 +452,29 @@ export default function CapsuleEditor({
             {toggle("math", "Formules LaTeX", <Sigma size={15}/>)}
             {toggle("color", "Couleurs", <Palette size={15}/>)}
             {toggle("presets", "Styles rapides", <Highlighter size={15}/>)}
+            {toggle("table", "Tableau", <TableIcon size={15}/>)}
             {toggle("preview", "Aperçu élève", <Eye size={15}/>)}
           </div>
 
           {tools.presets && <PresetBar onText={applyPreset} onBox={insertBox}/>}
+          {tools.table && (
+            <div className="table-tool">
+              <label>Lignes
+                <input type="number" min={1} max={12} value={grid.rows}
+                  onChange={e => setGrid(g => ({ ...g, rows: Number(e.target.value) || 1 }))}/>
+              </label>
+              <label>Colonnes
+                <input type="number" min={1} max={8} value={grid.cols}
+                  onChange={e => setGrid(g => ({ ...g, cols: Number(e.target.value) || 1 }))}/>
+              </label>
+              <label className="table-tool-check">
+                <input type="checkbox" checked={grid.header} onChange={e => setGrid(g => ({ ...g, header: e.target.checked }))}/>
+                Ligne d'en-tête
+              </label>
+              <button type="button" className="secondary" onMouseDown={e => e.preventDefault()} onClick={insertTable}>Insérer le tableau</button>
+              <small>Écris ensuite dans les cases ($…$ pour une formule). Les cases vides restent vides pour l'élève.</small>
+            </div>
+          )}
           {tools.math && <MathKeyboard onInsert={insertTex}/>}
           {tools.color && (
             <ColorPanel onText={c => paint("foreColor", c)} onBack={c => paint("hiliteColor", c)}/>
