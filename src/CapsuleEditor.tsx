@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import katex from "katex";
 import {
   Bold, Italic, Underline, Strikethrough, List, ListOrdered, Heading2, Superscript, Subscript,
-  Quote, Eraser, Sigma, Palette, Square, X, Save
+  Quote, Eraser, Sigma, Palette, Square, X, Save, Highlighter, Eye, ChevronDown
 } from "lucide-react";
 import { ColorPanel, MathKeyboard, PH, PRESETS, PresetBar, type Preset } from "./FormatKit";
 
@@ -145,7 +145,9 @@ export default function CapsuleEditor({
   const [kind, setKind] = useState(initial.kind);
   const [minutes, setMinutes] = useState(initial.minutes);
   const [priority, setPriority] = useState(initial.is_high_yield);
-  const [panel, setPanel] = useState<"math" | "color" | null>("math");
+  // Tous les panneaux d'aide sont repliés : l'éditeur ne les déplie qu'au clic.
+  const [tools, setTools] = useState({ math: false, color: false, presets: false, preview: false });
+  const toggleTool = (key: keyof typeof tools) => setTools(t => ({ ...t, [key]: !t[key] }));
   const [tick, setTick] = useState(0);
   const [preview, setPreview] = useState("");
   const [formError, setFormError] = useState("");
@@ -327,6 +329,13 @@ export default function CapsuleEditor({
       onMouseDown={e => e.preventDefault()} onClick={action}>{icon}</button>
   );
 
+  const toggle = (key: keyof typeof tools, label: string, icon: React.ReactNode) => (
+    <button type="button" className={`tool-toggle ${tools[key] ? "on" : ""}`} aria-expanded={tools[key]}
+      onMouseDown={e => e.preventDefault()} onClick={() => toggleTool(key)}>
+      {icon}{label}<ChevronDown size={14} className="tool-chevron"/>
+    </button>
+  );
+
   return (
     <div className="editor-overlay" role="presentation">
       <form className="capsule-editor" onSubmit={submit} onKeyDown={onFormKey} role="dialog"
@@ -394,14 +403,18 @@ export default function CapsuleEditor({
             {tool("Liste à puces", <List size={17}/>, () => format("insertUnorderedList"))}
             {tool("Liste numérotée", <ListOrdered size={17}/>, () => format("insertOrderedList"))}
             {tool("Effacer la mise en forme", <Eraser size={17}/>, () => format("removeFormat"))}
-            <span className="editor-toolbar-divider"/>
-            {tool("Raccourcis LaTeX", <Sigma size={17}/>, () => setPanel(p => (p === "math" ? null : "math")), panel === "math")}
-            {tool("Palette de couleurs", <Palette size={17}/>, () => setPanel(p => (p === "color" ? null : "color")), panel === "color")}
           </div>
 
-          <PresetBar onText={applyPreset} onBox={insertBox}/>
-          {panel === "math" && <MathKeyboard onInsert={insertTex}/>}
-          {panel === "color" && (
+          <div className="tool-toggles" role="group" aria-label="Outils d'aide à la rédaction">
+            {toggle("math", "Formules LaTeX", <Sigma size={15}/>)}
+            {toggle("color", "Couleurs", <Palette size={15}/>)}
+            {toggle("presets", "Styles rapides", <Highlighter size={15}/>)}
+            {toggle("preview", "Aperçu élève", <Eye size={15}/>)}
+          </div>
+
+          {tools.presets && <PresetBar onText={applyPreset} onBox={insertBox}/>}
+          {tools.math && <MathKeyboard onInsert={insertTex}/>}
+          {tools.color && (
             <ColorPanel onText={c => paint("foreColor", c)} onBack={c => paint("hiliteColor", c)}/>
           )}
 
@@ -424,9 +437,13 @@ export default function CapsuleEditor({
             Garde chaque formule sur une seule ligne. Les ▢ sont les champs à remplir (Tab pour passer au suivant).
           </p>
 
-          <div className="preview-head"><strong>Aperçu élève</strong><span>Rendu des formules en direct</span></div>
-          <div className="preview-box"
-            dangerouslySetInnerHTML={{ __html: preview || "<span class=\"muted\">L'aperçu apparaît ici.</span>" }} />
+          {tools.preview && (
+            <>
+              <div className="preview-head"><strong>Aperçu élève</strong><span>Rendu des formules en direct</span></div>
+              <div className="preview-box"
+                dangerouslySetInnerHTML={{ __html: preview || "<span class=\"muted\">L'aperçu apparaît ici.</span>" }} />
+            </>
+          )}
         </section>
 
         <label className="editor-priority">
