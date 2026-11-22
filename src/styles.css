@@ -255,3 +255,13 @@
 .rep-note svg{flex:none;margin-top:2px}
 .rep-note-edit{display:flex;flex-direction:column;gap:8px}
 .rep-note-edit textarea{width:100%;resize:vertical;font:inherit;font-size:12px;border:1px solid #dfe5ef;border-radius:8px;padding:9px}
+.crumbs{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:16px;font-size:12px}
+.crumb{border:0;background:transparent;padding:7px 11px;border-radius:8px;color:#5c6a82;font-weight:700;font-size:12px;cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumb:hover{background:#edf2fc;color:#2457c5}
+.crumb.current{background:#eaf0ff;color:#2457c5;cursor:default}
+.crumb-sep{color:#c4ccda}
+.tabs{display:flex;gap:4px;padding:8px 14px 0;border-bottom:1px solid #edf0f6;overflow-x:auto}
+.tab{border:0;background:transparent;padding:11px 14px;font-size:12px;font-weight:700;color:#7d889c;border-bottom:2px solid transparent;cursor:pointer;display:flex;gap:7px;align-items:center;white-space:nowrap}
+.tab span{background:#edf2ff;color:#2457c5;padding:2px 6px;border-radius:5px;font-size:9px}
+.tab.active{color:#2457c5;border-bottom-color:#2457c5}
+.muted-cell{display:block;color:#9aa4b5;font-size:9px;margin-top:4px;font-weight:500}

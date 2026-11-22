@@ -4,7 +4,7 @@ import {
   Activity, AlertCircle, ArrowDown, ArrowDownUp, ArrowUp, BookOpen, Check, ChevronDown, CircleHelp,
   ClipboardList, Cloud, FileText, GraduationCap, LayoutDashboard, LogOut, Plus,
   Flag, RefreshCw, Rocket, Save, Search, ShieldCheck, Sparkles, Target, Trash2, UploadCloud,
-  X
+  X, Dumbbell
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
@@ -26,9 +26,10 @@ type Chapter = { id: string; subject_id: string; title: string; position: number
 type LessonSession = { id: string; chapter_id: string; title: string; position: number };
 type Capsule = { id: string; chapter_id: string; title: string; body: string; minutes: number; position: number; kind: string; is_high_yield: boolean; session_id?: string | null };
 type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean };
+type FreeExercise = { id: string; level_id: string | null; label: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_published: boolean };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "firstchallenge" | "semantic" | "reports" | "faq";
+type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "freeexercises" | "firstchallenge" | "semantic" | "reports" | "faq";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 // Champ facultatif rattaché à la leçon : affiché à l'élève dans un encart repliable en fin de leçon.
 const COMPLEMENT_FIELD: FieldDef = {
@@ -110,6 +111,11 @@ export default function App() {
   const [entry, setEntry] = useState<EntrySpec | null>(null);
   const [pendingReports, setPendingReports] = useState(0);
   const [capsuleEditor, setCapsuleEditor] = useState<{ capsule: Capsule | null } | null>(null);
+  // Parcours de création : 1 = disciplines, 2 = leçons d'une discipline, 3 = une leçon (contenu / exercices)
+  const [courseView, setCourseView] = useState<"subjects" | "lessons" | "lesson">("subjects");
+  const [lessonTab, setLessonTab] = useState<"content" | "exercises">("content");
+  const [freeItems, setFreeItems] = useState<FreeExercise[]>([]);
+  const [freeMissing, setFreeMissing] = useState(false);
 
   const currentLevel = levels.find(x => x.id === levelId);
   // Catalogue complet dans `levels` ; menus de travail = classes actives uniquement.
@@ -189,6 +195,15 @@ export default function App() {
     setBanners((data ?? []) as Banner[]);
   }, []);
 
+  const loadFree = useCallback(async () => {
+    const { data, error } = await supabase.from("free_exercises")
+      .select("id,level_id,label,kind,front,back,choices,correct_index,explanation,position,is_published")
+      .order("position");
+    if (error) { setFreeItems([]); setFreeMissing(true); return; } // table pas encore créée : l'écran l'explique
+    setFreeMissing(false);
+    setFreeItems((data ?? []) as FreeExercise[]);
+  }, []);
+
   const refreshCounts = useCallback(async () => {
     const [s, c, ca, cr, st] = await Promise.all([
       supabase.from("subjects").select("id", { count: "exact", head: true }),
@@ -207,11 +222,12 @@ export default function App() {
     try {
       await loadLevels();
       await loadBanners();
+      await loadFree();
       await refreshCounts();
       setNotice("Synchronisation terminée avec Supabase.");
     } catch (e) { setNotice(`Synchronisation impossible : ${errorText(e)}`); }
     finally { setBusy(false); }
-  }, [loadLevels, loadBanners, refreshCounts]);
+  }, [loadLevels, loadBanners, loadFree, refreshCounts]);
 
   const authorize = useCallback(async (nextSession: Session | null) => {
     setChecking(true);
@@ -265,6 +281,7 @@ export default function App() {
       setLevelId((sub.data as { level_id: string }).level_id);
       setSubjectId((sub.data as { id: string }).id);
       setChapterId((ch.data as { id: string }).id);
+      setCourseView("lesson");
       setSection("courses");
     } catch (e) { setNotice(errorText(e)); }
   }, []);
@@ -333,34 +350,36 @@ export default function App() {
     });
   }
   async function deleteSubject(subject: Subject) {
-    if (!confirm(`Supprimer « ${subject.name} » et ses chapitres, blocs et cartes ?`)) return;
+    if (!confirm(`Supprimer « ${subject.name} » et toutes ses leçons (séances, blocs, cartes) ?`)) return;
     await runAction(async () => {
       const { error } = await supabase.from("subjects").delete().eq("id", subject.id);
-      if (error) throw error; setSubjectId(""); await loadContent(levelId);
+      if (error) throw error; setSubjectId(""); setCourseView("subjects"); await loadContent(levelId);
     }, "Discipline supprimée.");
   }
   function createChapter() {
     if (!subjectId) return;
     setEntry({
-      eyebrow: "CHAPITRE", title: "Nouveau chapitre", submitLabel: "Créer le chapitre",
-      intro: "Le chapitre est créé en brouillon : tu le publieras quand il sera prêt.",
+      eyebrow: "LEÇON", title: "Nouvelle leçon", submitLabel: "Créer la leçon",
+      intro: `Discipline : ${currentSubject?.name ?? "—"}. La leçon est créée en brouillon : tu la publieras quand elle sera prête.`,
       fields: [
-        { kind: "math", key: "title", label: "Titre du chapitre", required: true, single: true, placeholder: "Ex. : Équations du premier degré", preview: "title" },
+        { kind: "math", key: "title", label: "Titre de la leçon", required: true, single: true, placeholder: "Ex. : Équations du premier degré", preview: "title" },
         { kind: "text", key: "tag", label: "Smart Tag (facultatif)", max: 60, help: "Laisse vide s'il n'y en a pas." },
         COMPLEMENT_FIELD
       ],
       initial: { title: "", tag: "", complement: "" },
       onSubmit: v => save(async () => {
-        const { error } = await supabase.from("chapters").insert({ subject_id: subjectId, title: str(v.title), tag: str(v.tag) || null, complement: str(v.complement) || null, position: chapters.length, status: "draft" });
+        const { data, error } = await supabase.from("chapters").insert({ subject_id: subjectId, title: str(v.title), tag: str(v.tag) || null, complement: str(v.complement) || null, position: chapters.length, status: "draft" }).select("id").single();
         if (error) throw error; await loadChapters(subjectId);
-      }, "Chapitre créé en brouillon.")
+        // Parcours guidé : on arrive directement dans la leçon créée pour y ajouter son contenu
+        if (data?.id) { setChapterId(data.id); setLessonTab("content"); setCourseView("lesson"); }
+      }, "Leçon créée en brouillon : ajoute maintenant son contenu.")
     });
   }
   function editChapter(chapter: Chapter) {
     setEntry({
-      eyebrow: "CHAPITRE", title: "Modifier le chapitre", submitLabel: "Enregistrer",
+      eyebrow: "LEÇON", title: "Modifier la leçon", submitLabel: "Enregistrer",
       fields: [
-        { kind: "math", key: "title", label: "Titre du chapitre", required: true, single: true, preview: "title" },
+        { kind: "math", key: "title", label: "Titre de la leçon", required: true, single: true, preview: "title" },
         { kind: "text", key: "tag", label: "Smart Tag (facultatif)", max: 60 },
         COMPLEMENT_FIELD
       ],
@@ -368,23 +387,23 @@ export default function App() {
       onSubmit: v => save(async () => {
         const { error } = await supabase.from("chapters").update({ title: str(v.title), tag: str(v.tag) || null, complement: str(v.complement) || null }).eq("id", chapter.id);
         if (error) throw error; await loadChapters(subjectId);
-      }, "Chapitre mis à jour.")
+      }, "Leçon mise à jour.")
     });
   }
   async function toggleChapter(chapter: Chapter) {
     const status = chapter.status === "published" ? "draft" : "published";
-    if (status === "published" && !confirm("Publier ce chapitre ? Les élèves de la classe pourront le consulter.")) return;
+    if (status === "published" && !confirm("Publier cette leçon ? Les élèves de la classe pourront la consulter.")) return;
     await runAction(async () => {
       const { error } = await supabase.from("chapters").update({ status }).eq("id", chapter.id);
       if (error) throw error; await loadChapters(subjectId);
-    }, status === "published" ? "Chapitre publié pour les élèves." : "Chapitre remis en brouillon.");
+    }, status === "published" ? "Leçon publiée pour les élèves." : "Leçon remise en brouillon.");
   }
   async function deleteChapter(chapter: Chapter) {
-    if (!confirm(`Supprimer le chapitre « ${chapter.title} » et son contenu ?`)) return;
+    if (!confirm(`Supprimer la leçon « ${chapter.title} » et tout son contenu (séances, blocs, cartes) ?`)) return;
     await runAction(async () => {
       const { error } = await supabase.from("chapters").delete().eq("id", chapter.id);
-      if (error) throw error; setChapterId(""); await loadChapters(subjectId);
-    }, "Chapitre supprimé.");
+      if (error) throw error; setChapterId(""); setCourseView("lessons"); await loadChapters(subjectId);
+    }, "Leçon supprimée.");
   }
   function createSession() {
     if (!chapterId) return;
@@ -543,7 +562,7 @@ export default function App() {
   }
   function bannerSpec(banner: Banner | null): EntrySpec {
     const chapterOptions = [{ value: "", label: "Aucune destination" }, ...chapters.map(c => ({ value: c.id, label: c.title }))];
-    if (banner?.chapter_id && !chapterOptions.some(o => o.value === banner.chapter_id)) chapterOptions.push({ value: banner.chapter_id, label: "Chapitre déjà associé" });
+    if (banner?.chapter_id && !chapterOptions.some(o => o.value === banner.chapter_id)) chapterOptions.push({ value: banner.chapter_id, label: "Leçon déjà associée" });
     const levelOptions = [{ value: "", label: "Toutes les classes" }, ...activeLevels.map(l => ({ value: l.id, label: l.label }))];
     if (banner?.level_id && !levelOptions.some(o => o.value === banner.level_id)) levelOptions.push({ value: banner.level_id, label: `${levels.find(l => l.id === banner.level_id)?.label ?? banner.level_id} (désactivée)` });
     return {
@@ -554,7 +573,7 @@ export default function App() {
         { kind: "text", key: "subtitle", label: "Sous-titre (facultatif)", max: 140 },
         { kind: "text", key: "button_label", label: "Texte du bouton (facultatif)", max: 30 },
         { kind: "select", key: "level_id", label: "Classe cible", options: levelOptions },
-        { kind: "select", key: "chapter_id", label: "Chapitre à ouvrir", options: chapterOptions, help: "Seuls les chapitres de la discipline sélectionnée sont proposés." }
+        { kind: "select", key: "chapter_id", label: "Leçon à ouvrir", options: chapterOptions, help: "Seules les leçons de la discipline sélectionnée sont proposées." }
       ],
       initial: banner
         ? { title: banner.title, subtitle: banner.subtitle ?? "", button_label: banner.button_label ?? "", level_id: banner.level_id ?? "", chapter_id: banner.chapter_id ?? "" }
@@ -580,6 +599,69 @@ export default function App() {
       const { error } = await supabase.from("explorer_banners").delete().eq("id", banner.id);
       if (error) throw error; await loadBanners();
     }, "Bannière supprimée.");
+  }
+
+  const freeShown = useMemo(() => freeItems.filter(x => x.level_id === null || x.level_id === levelId), [freeItems, levelId]);
+
+  // Champs d'un exercice libre : classe cible + étiquette, puis les mêmes champs qu'une carte de leçon
+  const freeFields = (withKind: boolean, count: number, current: FreeExercise | null): FieldDef[] => {
+    const levelOptions = [{ value: "", label: "Toutes les classes" }, ...activeLevels.map(l => ({ value: l.id, label: l.label }))];
+    if (current?.level_id && !levelOptions.some(o => o.value === current.level_id)) levelOptions.push({ value: current.level_id, label: `${levels.find(l => l.id === current.level_id)?.label ?? current.level_id} (désactivée)` });
+    return [
+      { kind: "select", key: "level_id", label: "Classe cible", options: levelOptions },
+      { kind: "text", key: "label", label: "Étiquette (facultatif)", max: 60, placeholder: "Ex. : Calcul mental, Grammaire…", help: "Un repère libre, affiché à l'élève comme intitulé de l'exercice." },
+      ...cardFields(withKind, count)
+    ];
+  };
+  function createFree() {
+    setEntry({
+      eyebrow: "EXERCICE LIBRE", title: "Nouvel exercice libre", submitLabel: "Créer l’exercice",
+      intro: "Un exercice libre ne dépend d'aucun cours. Il est créé en brouillon : tu le publieras quand il sera prêt. Les formules LaTeX s'écrivent entre $ … $ (Alt+M).",
+      fields: freeFields(true, 4, null),
+      initial: { level_id: levelId, label: "", kind: "qcm", front: "", choices: ["", "", "", ""], correct: "0", back: "", ...explanationValues(null) },
+      onSubmit: v => save(async () => {
+        const kind = str(v.kind);
+        const isQcm = kind === "qcm";
+        const { error } = await supabase.from("free_exercises").insert({
+          level_id: str(v.level_id) || null, label: str(v.label) || null, kind, front: str(v.front), back: str(v.back) || null,
+          choices: isQcm ? strings(v.choices, 4).map(x => x.trim()) : null, correct_index: isQcm ? Number(str(v.correct)) : null,
+          explanation: explanationFrom(v) || null, position: freeItems.length, is_published: false
+        });
+        if (error) throw error; await loadFree();
+      }, "Exercice libre créé en brouillon.")
+    });
+  }
+  function editFree(item: FreeExercise) {
+    const count = Math.max(4, item.choices?.length ?? 4);
+    setEntry({
+      eyebrow: "EXERCICE LIBRE", title: "Modifier l’exercice libre", submitLabel: "Enregistrer",
+      intro: `Type : ${item.kind.toUpperCase()}`,
+      fields: freeFields(false, count, item),
+      initial: { level_id: item.level_id ?? "", label: item.label ?? "", kind: item.kind, front: item.front, choices: strings(item.choices ?? [], count), correct: String(item.correct_index ?? 0), back: item.back ?? "", ...explanationValues(item.explanation) },
+      onSubmit: v => save(async () => {
+        const isQcm = item.kind === "qcm";
+        const { error } = await supabase.from("free_exercises").update({
+          level_id: str(v.level_id) || null, label: str(v.label) || null, front: str(v.front), back: str(v.back) || null, explanation: explanationFrom(v) || null,
+          ...(isQcm ? { choices: strings(v.choices, count).map(x => x.trim()), correct_index: Number(str(v.correct)) } : {})
+        }).eq("id", item.id);
+        if (error) throw error; await loadFree();
+      }, "Exercice libre mis à jour.")
+    });
+  }
+  async function toggleFree(item: FreeExercise) {
+    const publish = !item.is_published;
+    if (publish && !confirm("Publier cet exercice libre ? Il apparaîtra dans le Dojo des élèves concernés.")) return;
+    await runAction(async () => {
+      const { error } = await supabase.from("free_exercises").update({ is_published: publish }).eq("id", item.id);
+      if (error) throw error; await loadFree();
+    }, publish ? "Exercice publié." : "Exercice remis en brouillon.");
+  }
+  async function deleteFree(item: FreeExercise) {
+    if (!confirm("Supprimer cet exercice libre ?")) return;
+    await runAction(async () => {
+      const { error } = await supabase.from("free_exercises").delete().eq("id", item.id);
+      if (error) throw error; await loadFree();
+    }, "Exercice libre supprimé.");
   }
 
   const visibleChapters = useMemo(() => chapters.filter(x => `${x.title} ${x.tag ?? ""}`.toLowerCase().includes(searchText.toLowerCase())), [chapters, searchText]);
@@ -614,6 +696,7 @@ export default function App() {
     { id: "overview" as Section, label: "Vue générale", icon: LayoutDashboard },
     { id: "levels" as Section, label: "Classes & séries", icon: GraduationCap },
     { id: "courses" as Section, label: "Cours & leçons", icon: BookOpen },
+    { id: "freeexercises" as Section, label: "Exercices libres", icon: Dumbbell },
     { id: "themes" as Section, label: "Thèmes · Organisation", icon: ArrowDownUp },
     { id: "banners" as Section, label: "Explorer · À la une", icon: Sparkles },
     { id: "motivation" as Section, label: "Accueil · Examens & citations", icon: Activity },
@@ -655,13 +738,14 @@ export default function App() {
             <div className="stat-grid">
               <Stat icon={<GraduationCap/>} label="Élèves inscrits" value={counts.students} tone="blue" detail="Profils étudiants"/>
               <Stat icon={<BookOpen/>} label="Disciplines" value={counts.subjects} tone="violet" detail="Toutes classes"/>
-              <Stat icon={<FileText/>} label="Chapitres" value={counts.chapters} tone="green" detail="Brouillons et publiés"/>
+              <Stat icon={<FileText/>} label="Leçons" value={counts.chapters} tone="green" detail="Brouillons et publiés"/>
               <Stat icon={<ClipboardList/>} label="Blocs pédagogiques" value={counts.capsules} tone="amber" detail="Contenus de leçon"/>
               <Stat icon={<CircleHelp/>} label="Cartes & exercices" value={counts.cards} tone="rose" detail="QCM, cartes, clozes"/>
             </div>
             <div className="section-heading"><div><h3>Accès rapides</h3><p>Gère les contenus réellement consommés par les élèves.</p></div></div>
             <div className="quick-grid">
-              <button className="quick-card" onClick={()=>setSection("courses")}><div className="quick-icon blue"><BookOpen/></div><strong>Gérer les cours</strong><span>Disciplines, chapitres, leçons et exercices</span><b>Ouvrir <span>→</span></b></button>
+              <button className="quick-card" onClick={()=>setSection("courses")}><div className="quick-icon blue"><BookOpen/></div><strong>Gérer les cours</strong><span>Disciplines, leçons, séances et exercices</span><b>Ouvrir <span>→</span></b></button>
+              <button className="quick-card" onClick={()=>setSection("freeexercises")}><div className="quick-icon green"><Dumbbell/></div><strong>Exercices libres</strong><span>Des exercices sans cours, pour le Dojo</span><b>Ouvrir <span>→</span></b></button>
               <button className="quick-card" onClick={()=>setSection("banners")}><div className="quick-icon violet"><Sparkles/></div><strong>Mettre à la une</strong><span>Publier une bannière dans Explorer</span><b>Ouvrir <span>→</span></b></button>
             </div>
             <div className="info-banner"><div className="info-symbol"><Cloud size={21}/></div><div><strong>Une seule source de vérité</strong><p>Les cours et défis publiés ici sont lus par l’application Android via les politiques RLS de Supabase. Les brouillons restent réservés à l’administration.</p></div><ShieldCheck className="info-check" size={22}/></div>
@@ -699,34 +783,57 @@ export default function App() {
           </section>}
 
           {section === "courses" && <section className="page">
-            <div className="page-intro"><div><div className="eyebrow">CONTENU PÉDAGOGIQUE</div><h2>Construire le parcours élève</h2><p>Choisis une classe, puis une discipline et un chapitre pour gérer son contenu.</p></div><button className="secondary" onClick={()=>void reloadAll()}><RefreshCw size={16}/> Actualiser</button></div>
-            <div className="selector-row">
-              <label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{activeLevels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
-              <label>Discipline<select value={subjectId} onChange={e=>setSubjectId(e.target.value)}><option value="">Choisir une discipline</option>{subjects.map(x=><option key={x.id} value={x.id}>{x.emoji ?? "📘"} {x.name}</option>)}</select></label>
-              <label>Chapitre<select value={chapterId} onChange={e=>setChapterId(e.target.value)}><option value="">Choisir un chapitre</option>{chapters.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select></label>
-            </div>
-            <div className="course-columns">
+            <nav className="crumbs" aria-label="Parcours de création">
+              <button className={`crumb ${courseView==="subjects"?"current":""}`} onClick={()=>setCourseView("subjects")}>{currentLevel?.label ?? "Classe"}</button>
+              {courseView!=="subjects" && currentSubject && <><span className="crumb-sep">›</span><button className={`crumb ${courseView==="lessons"?"current":""}`} onClick={()=>setCourseView("lessons")}>{currentSubject.name}</button></>}
+              {courseView==="lesson" && currentChapter && <><span className="crumb-sep">›</span><span className="crumb current"><MathHtml text={currentChapter.title}/></span></>}
+            </nav>
+
+            {courseView==="subjects" && <>
+              <div className="page-intro"><div><div className="eyebrow">ÉTAPE 1 SUR 3 · DISCIPLINES</div><h2>Choisis une discipline</h2><p>Le parcours est toujours le même : classe, discipline, puis leçon. Ouvre une discipline pour gérer ses leçons.</p></div><button className="primary" disabled={!levelId} onClick={()=>void createSubject()}><Plus size={16}/> Nouvelle discipline</button></div>
+              {activeLevels.length>1 && <div className="selector-row single"><label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{activeLevels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label></div>}
               <div className="panel">
-                <div className="panel-heading"><div><h3>Disciplines</h3><p>{currentLevel?.label ?? "Sélectionne une classe"}</p></div><button className="small-primary" onClick={()=>void createSubject()} disabled={!levelId}><Plus size={15}/> Ajouter</button></div>
-                <div className="list-search"><Search size={16}/><input value={searchText} onChange={e=>setSearchText(e.target.value)} placeholder="Filtrer les chapitres…"/></div>
-                {subjects.length===0?<Empty text="Aucune discipline pour cette classe."/>:<div className="item-list">{subjects.map(subject=><div key={subject.id} className={`subject-row ${subject.id===subjectId?"selected":""}`}><button className="subject-select" onClick={()=>setSubjectId(subject.id)}><span className="subject-emoji">{subject.emoji??"📘"}</span><span><strong>{subject.name}</strong><small>{chapters.length && subject.id===subjectId?`${chapters.length} chapitre(s)`:"Discipline"} · coef. {formatCoef(subject.coefficient)}</small></span></button><div className="row-actions"><button title="Modifier" onClick={()=>void editSubject(subject)}>✎</button><button title="Supprimer" onClick={()=>void deleteSubject(subject)}><Trash2 size={14}/></button></div></div>)}</div>}
+                {subjects.length===0?<Empty text="Aucune discipline pour cette classe. Crée la première avec « Nouvelle discipline »."/>:<div className="item-list">{subjects.map(subject=><div key={subject.id} className="subject-row"><button className="subject-select" onClick={()=>{setSubjectId(subject.id);setCourseView("lessons");}}><span className="subject-emoji"><BookOpen size={17}/></span><span><strong>{subject.name}</strong><small>Coefficient {formatCoef(subject.coefficient)}</small></span></button><div className="row-actions"><button title="Ouvrir les leçons" onClick={()=>{setSubjectId(subject.id);setCourseView("lessons");}}>→</button><button title="Modifier" onClick={()=>void editSubject(subject)}>✎</button><button title="Supprimer" onClick={()=>void deleteSubject(subject)}><Trash2 size={14}/></button></div></div>)}</div>}
               </div>
+            </>}
+
+            {courseView==="lessons" && <>
+              <div className="page-intro"><div><div className="eyebrow">ÉTAPE 2 SUR 3 · LEÇONS</div><h2>{currentSubject?.name ?? "Discipline"}</h2><p>Ouvre une leçon pour y ajouter des séances, des blocs de cours et des exercices. Une leçon reste en brouillon tant que tu ne la publies pas.</p></div><div className="panel-actions"><button className="secondary" onClick={()=>setCourseView("subjects")}>← Disciplines</button><button className="secondary" onClick={()=>setSection("themes")}>Organiser en thèmes</button><button className="primary" disabled={!subjectId} onClick={()=>void createChapter()}><Plus size={16}/> Nouvelle leçon</button></div></div>
               <div className="panel">
-                <div className="panel-heading"><div><h3>Chapitres</h3><p>{currentSubject?.name ?? "Sélectionne une discipline"}</p></div><button className="small-primary" onClick={()=>void createChapter()} disabled={!subjectId}><Plus size={15}/> Ajouter</button></div>
-                {chapters.length===0?<Empty text="Crée un chapitre pour commencer."/>:<div className="item-list">{visibleChapters.map((chapter,i)=><div key={chapter.id} className={`chapter-row ${chapter.id===chapterId?"selected":""}`}><button className="chapter-select" onClick={()=>setChapterId(chapter.id)}><span className="chapter-number">{String(i+1).padStart(2,"0")}</span><span className="chapter-title"><strong><MathHtml text={chapter.title}/></strong><small>{chapter.tag||"Sans Smart Tag"}</small></span><Status status={chapter.status}/></button><div className="row-actions"><button title="Modifier" onClick={()=>void editChapter(chapter)}>✎</button><button title={chapter.status==="published"?"Dépublier":"Publier"} onClick={()=>void toggleChapter(chapter)}>{chapter.status==="published"?<X size={14}/>:<Check size={14}/>}</button><button title="Supprimer" onClick={()=>void deleteChapter(chapter)}><Trash2 size={14}/></button></div></div>)}</div>}
+                <div className="list-search"><Search size={16}/><input value={searchText} onChange={e=>setSearchText(e.target.value)} placeholder="Rechercher une leçon…"/></div>
+                {chapters.length===0?<Empty text="Aucune leçon. Crée la première avec « Nouvelle leçon »."/>:visibleChapters.length===0?<Empty text="Aucune leçon ne correspond à la recherche."/>:<div className="item-list">{visibleChapters.map(chapter=><div key={chapter.id} className="chapter-row"><button className="chapter-select" onClick={()=>{setChapterId(chapter.id);setLessonTab("content");setCourseView("lesson");}}><span className="chapter-number">{String(chapters.findIndex(c=>c.id===chapter.id)+1).padStart(2,"0")}</span><span className="chapter-title"><strong><MathHtml text={chapter.title}/></strong><small>{chapter.tag||"Sans Smart Tag"}</small></span><Status status={chapter.status}/></button><div className="row-actions"><button title="Modifier les infos" onClick={()=>void editChapter(chapter)}>✎</button><button title={chapter.status==="published"?"Dépublier":"Publier"} onClick={()=>void toggleChapter(chapter)}>{chapter.status==="published"?<X size={14}/>:<Check size={14}/>}</button><button title="Supprimer" onClick={()=>void deleteChapter(chapter)}><Trash2 size={14}/></button></div></div>)}</div>}
               </div>
-            </div>
-            <div className="panel lesson-panel">
-              <div className="panel-heading"><div><div className="eyebrow">ÉDITEUR DE LEÇON</div><h3>{currentChapter?.title ?? "Sélectionne un chapitre"}</h3><p>Les blocs et les cartes ci-dessous sont partagés avec l’application élève.</p></div><div className="panel-actions"><button className="secondary" disabled={!currentChapter} onClick={()=>currentChapter&&void toggleChapter(currentChapter)}>{currentChapter?.status==="published"?"Dépublier":"Publier le chapitre"}</button><button className="small-primary" disabled={!chapterId} onClick={()=>void createCapsule()}><Plus size={15}/> Bloc</button><button className="small-primary" disabled={!chapterId} onClick={()=>void createCard()}><Plus size={15}/> Carte / exercice</button></div></div>
-              {!chapterId?<Empty text="Sélectionne un chapitre pour consulter et modifier sa leçon."/>:<>
+            </>}
+
+            {courseView==="lesson" && (!currentChapter ? <div className="panel"><Empty text="Leçon introuvable. Reviens à la liste des leçons."/></div> : <>
+              <div className="page-intro"><div><div className="eyebrow">ÉTAPE 3 SUR 3 · LEÇON</div><h2><MathHtml text={currentChapter.title}/></h2><p><Status status={currentChapter.status}/>{currentChapter.tag?` · ${currentChapter.tag}`:""}</p></div><div className="panel-actions"><button className="secondary" onClick={()=>setCourseView("lessons")}>← Leçons</button><button className="secondary" onClick={()=>editChapter(currentChapter)}>Modifier les infos</button><button className={currentChapter.status==="published"?"secondary":"primary"} onClick={()=>void toggleChapter(currentChapter)}>{currentChapter.status==="published"?"Dépublier":"Publier la leçon"}</button></div></div>
+              <div className="panel lesson-panel">
+                <div className="tabs" role="tablist">
+                  <button role="tab" aria-selected={lessonTab==="content"} className={`tab ${lessonTab==="content"?"active":""}`} onClick={()=>setLessonTab("content")}>Contenu du cours <span>{capsules.length}</span></button>
+                  <button role="tab" aria-selected={lessonTab==="exercises"} className={`tab ${lessonTab==="exercises"?"active":""}`} onClick={()=>setLessonTab("exercises")}>Exercices <span>{cards.length}</span></button>
+                </div>
+                {lessonTab==="content" && <>
+                  <div className="content-subhead"><small>Découpe la leçon en séances (facultatif), puis ajoute ses blocs de cours dans l’ordre de présentation.</small><button className="small-primary" onClick={()=>void createCapsule()}><Plus size={15}/> Bloc de cours</button></div>
                 <div className="content-subhead"><h4>Séances <span>{sessions.length}</span></h4><div className="panel-actions"><small>Étapes chronologiques de la leçon (Séance 1, Séance 2…)</small><button className="small-primary" onClick={()=>void createSession()}><Plus size={15}/> Séance</button></div></div>
                 {sessions.length===0?<Empty text="Aucune séance. Sans séance, les blocs s’affichent à la suite, comme avant."/>:<div className="item-list">{sessions.map((session,i)=><div key={session.id} className="chapter-row"><span className="chapter-number">{i+1}</span><span className="chapter-title"><strong><MathHtml text={session.title}/></strong><small>Séance {i+1} · {capsules.filter(c=>c.session_id===session.id).length} bloc(s)</small></span><div className="row-actions"><button title="Monter" disabled={i===0} onClick={()=>void moveSession(session,-1)}><ArrowUp size={14}/></button><button title="Descendre" disabled={i===sessions.length-1} onClick={()=>void moveSession(session,1)}><ArrowDown size={14}/></button><button title="Modifier" onClick={()=>editSession(session)}>✎</button><button title="Supprimer" onClick={()=>void deleteSession(session)}><Trash2 size={14}/></button></div></div>)}</div>}
                 <div className="content-subhead"><h4>Blocs pédagogiques <span>{capsules.length}</span></h4><small>Ordre de présentation de la leçon</small></div>
                 {capsules.length===0?<Empty text="Aucun bloc. Ajoute une introduction, une explication, une règle ou une astuce."/>:<div className="capsule-grid">{capsules.map((capsule,i)=><article className="capsule-card" key={capsule.id}><div className="capsule-top"><span className="capsule-index">{String(i+1).padStart(2,"0")}</span><span className="kind-pill">{KIND_LABEL[capsule.kind]??capsule.kind}</span><button className="text-icon" onClick={()=>void editCapsule(capsule)} title="Modifier">✎</button><button className="text-icon danger" onClick={()=>void deleteCapsule(capsule)} title="Supprimer"><Trash2 size={14}/></button></div><h4>{capsule.title}</h4><p>{capsule.body||"Aucun texte dans ce bloc."}</p><div className="capsule-footer"><span>{capsule.minutes} min</span><span>{capsule.is_high_yield?"Prioritaire":"Bloc de leçon"}</span></div><label style={{display:"block",marginTop:8,fontSize:10,color:"#6f7b91",fontWeight:700}}>Séance<select value={capsule.session_id??""} disabled={sessions.length===0} onChange={e=>void assignCapsule(capsule,e.target.value)} style={{width:"100%",marginTop:4,border:"1px solid #dfe5ef",borderRadius:7,padding:6,fontSize:11,background:"#fff"}}><option value="">Hors séance</option>{sessions.map((s,i)=><option key={s.id} value={s.id}>{`Séance ${i+1}`}</option>)}</select></label></article>)}</div>}
-                <div className="content-subhead"><h4>Cartes et exercices <span>{cards.length}</span></h4><small>QCM, flashcards et textes à trous</small></div>
+                </>}
+                {lessonTab==="exercises" && <>
+                  <div className="content-subhead"><small>QCM, flashcards et textes à compléter liés à cette leçon.</small><button className="small-primary" onClick={()=>void createCard()}><Plus size={15}/> Exercice</button></div>
                 {cards.length===0?<Empty text="Aucune carte ni exercice dans ce chapitre."/>:<div className="table-wrap"><table><thead><tr><th>Type</th><th>Énoncé / recto</th><th>Réponse</th><th></th></tr></thead><tbody>{cards.map(card=><tr key={card.id}><td><span className="kind-pill">{card.kind.toUpperCase()}</span></td><td className="question-cell"><MathHtml text={card.front}/></td><td><MathHtml text={card.kind==="qcm"&&card.choices?card.choices[card.correct_index??0]??"—":card.back??"—"}/></td><td className="table-actions"><button onClick={()=>void editCard(card)} title="Modifier">✎</button><button onClick={()=>void deleteCard(card)} title="Supprimer"><Trash2 size={14}/></button></td></tr>)}</tbody></table></div>}
-              </>}
-            </div>
+                </>}
+              </div>
+            </>)}
+          </section>}
+
+          {section === "freeexercises" && <section className="page">
+            <div className="page-intro"><div><div className="eyebrow">DOJO · HORS COURS</div><h2>Exercices libres</h2><p>Des exercices qui ne dépendent d’aucune discipline, leçon ou chapitre. Les élèves les retrouvent dans le Dojo, bloc « Exercices libres », sans avoir à terminer de leçon.</p></div><button className="primary" disabled={freeMissing} onClick={()=>createFree()}><Plus size={16}/> Nouvel exercice</button></div>
+            {freeMissing && <div className="banner-tip"><AlertCircle size={19}/><div><strong>Configuration requise</strong><p>La table des exercices libres n’existe pas encore dans Supabase. Exécute une seule fois le script <code>supabase/migrations/20261122_exercices_libres.sql</code> dans l’éditeur SQL, puis clique sur Synchroniser.</p></div></div>}
+            {!freeMissing && activeLevels.length>1 && <div className="selector-row single"><label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{activeLevels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label></div>}
+            {!freeMissing && (freeShown.length===0
+              ? <div className="panel"><Empty text="Aucun exercice libre pour cette classe. Crée le premier avec « Nouvel exercice »."/></div>
+              : <div className="panel"><div className="table-wrap"><table><thead><tr><th>Type</th><th>Énoncé</th><th>Réponse</th><th>Classe</th><th>Statut</th><th></th></tr></thead><tbody>{freeShown.map(item=><tr key={item.id}><td><span className="kind-pill">{item.kind.toUpperCase()}</span></td><td className="question-cell"><MathHtml text={item.front}/>{item.label && <small className="muted-cell">{item.label}</small>}</td><td><MathHtml text={item.kind==="qcm"&&item.choices?item.choices[item.correct_index??0]??"—":item.back??"—"}/></td><td>{item.level_id?(levels.find(l=>l.id===item.level_id)?.label??item.level_id):"Toutes"}</td><td><Status status={item.is_published?"published":"draft"}/></td><td className="table-actions"><button onClick={()=>editFree(item)} title="Modifier">✎</button><button onClick={()=>void toggleFree(item)} title={item.is_published?"Dépublier":"Publier"}>{item.is_published?<X size={14}/>:<Check size={14}/>}</button><button onClick={()=>void deleteFree(item)} title="Supprimer"><Trash2 size={14}/></button></td></tr>)}</tbody></table></div></div>)}
           </section>}
 
           {section === "banners" && <section className="page">
