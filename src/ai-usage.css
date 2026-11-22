@@ -1,0 +1,27 @@
+.aiu-page{max-width:1600px}
+.aiu-toolbar{display:flex;align-items:end;justify-content:space-between;gap:14px;margin:0 0 16px;padding:14px 16px;background:#fff;border:1px solid var(--line);border-radius:12px}
+.aiu-filters{display:flex;gap:5px;flex-wrap:wrap}
+.aiu-filters button{border:1px solid #dfe5ef;background:#fff;color:#53617a;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:700}
+.aiu-filters button.active{background:#eaf0ff;border-color:#9bb8ff;color:#2457c5}
+.aiu-select-label{display:flex;flex-direction:column;gap:6px;font-size:10px;font-weight:700;color:#6f7b91}
+.aiu-select-label select{border:1px solid #dfe5ef;border-radius:8px;background:#fff;padding:9px 11px;font-size:11px;color:#24324d}
+.aiu-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.aiu-stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.aiu-stat span{font-size:10px;color:#6f7b91;font-weight:700}
+.aiu-stat strong{font:800 clamp(19px,2.1vw,27px) Manrope;color:#142344;overflow-wrap:anywhere}
+.aiu-stat small{font-size:10px;color:#8792a6}
+.aiu-notes{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:#f0f5ff;border:1px solid #d8e4ff;border-radius:10px;margin:0 0 16px}
+.aiu-notes svg{flex:none;color:#2457c5;margin-top:2px}.aiu-notes p{font-size:11px;color:#52617c;margin:0;line-height:1.55}
+.aiu-error{display:flex;gap:9px;align-items:center;background:#fff0f0;border:1px solid #ffd4d4;color:#a72f35;border-radius:9px;padding:11px 13px;margin-bottom:14px;font-size:12px}
+.aiu-table-panel{overflow:hidden}.aiu-table-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.aiu-table-heading h3{margin:0 0 4px}.aiu-table-heading p{font-size:10px}.aiu-table-heading>span{font-size:10px;color:#6f7b91;white-space:nowrap}
+.aiu-table{min-width:1050px}.aiu-table th{white-space:nowrap}.aiu-table td{font-size:11px;vertical-align:middle}
+.aiu-date{white-space:nowrap;color:#596780}.aiu-kind{display:inline-flex;padding:4px 7px;border-radius:20px;font-size:9px;font-weight:800;white-space:nowrap}
+.aiu-kind.grade{background:#eaf0ff;color:#2457c5}.aiu-kind.assist{background:#f2ebff;color:#7445bf}
+.aiu-model{display:block;max-width:150px;overflow-wrap:anywhere;color:#53617a;font-size:10px}
+.aiu-number{white-space:nowrap;font-variant-numeric:tabular-nums}.aiu-number svg{vertical-align:middle;margin-right:3px;color:#8792a6}
+.aiu-total{font-weight:800;color:#142344}.aiu-status{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;white-space:nowrap}
+.aiu-status.ok{color:#15966a}.aiu-status.fail{color:#b42318}.aiu-unmeasured{display:block;color:#9a6a18;font-size:9px;margin-top:3px}
+.aiu-empty{padding:28px 18px;text-align:center;color:#7a879d;font-size:12px;line-height:1.6}
+@media(max-width:900px){.aiu-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.aiu-toolbar{align-items:stretch;flex-direction:column}.aiu-select-label select{width:100%}}
+@media(max-width:480px){.aiu-stats{grid-template-columns:1fr 1fr}.aiu-stat{padding:12px}.aiu-stat strong{font-size:18px}.aiu-table-heading{align-items:flex-start;flex-direction:column}}
