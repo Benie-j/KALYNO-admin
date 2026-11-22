@@ -3,6 +3,8 @@ import { Check, CircleAlert, Save, X } from "lucide-react";
 import MathField, { MathHtml } from "./MathField";
 import MathPalette from "./MathPalette";
 import { formulaIssues } from "./mathText";
+import TableEditor, { TablePreview } from "./TableEditor";
+import { tableProblems, valueToDraft } from "./tableExercise";
 
 /**
  * Page de saisie complète : remplace les anciennes boîtes window.prompt.
@@ -14,7 +16,9 @@ export type FieldDef =
   | (Base & { kind: "text"; required?: boolean; max?: number; placeholder?: string })
   | (Base & { kind: "math"; required?: boolean; single?: boolean; rows?: number; placeholder?: string })
   | (Base & { kind: "select"; options: { value: string; label: string }[] })
-  | (Base & { kind: "choices"; count: number; correctKey: string });
+  | (Base & { kind: "choices"; count: number; correctKey: string })
+  /** Tableau à compléter : la valeur est le brouillon du tableau sérialisé en JSON (voir tableExercise.ts). */
+  | (Base & { kind: "table"; statementKey: string });
 
 export type EntrySpec = {
   eyebrow: string;
@@ -93,6 +97,14 @@ export default function EntryPage({ spec, onClose }: { spec: EntrySpec; onClose:
         if (!Number.isInteger(correct) || correct < 0 || correct >= items.length) out.push(`${f.label} : désigne la bonne réponse.`);
       }
     }
+    for (const f of visible) {
+      if (f.kind !== "table") continue;
+      const draft = valueToDraft(values[f.key]);
+      tableProblems(text(f.statementKey), draft).forEach(p => out.push(p));
+      draft.rows.forEach((row, i) => row.forEach((cell, j) => {
+        if (!cell.blank) formulaIssues(cell.text).forEach(p => out.push(`Cellule (ligne ${i + 1}, colonne ${j + 1}) : ${p}.`));
+      }));
+    }
     const extra = spec.validate?.(values);
     if (extra) out.push(extra);
     return out;
@@ -147,6 +159,10 @@ export default function EntryPage({ spec, onClose }: { spec: EntrySpec; onClose:
       return;
     }
     if (f.kind === "select") return;
+    if (f.kind === "table") {
+      preview.push(<TablePreview key={`${f.key}-${i}`} draft={valueToDraft(values[f.key])} />);
+      return;
+    }
     const s = text(f.key);
     if (!s.trim()) return;
     preview.push(
@@ -190,6 +206,9 @@ export default function EntryPage({ spec, onClose }: { spec: EntrySpec; onClose:
                     <select id={id} className="ep-input" value={text(f.key)} onChange={e => set(f.key, e.target.value)}>
                       {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
+                  )}
+                  {f.kind === "table" && (
+                    <TableEditor value={text(f.key)} onChange={v => set(f.key, v)} />
                   )}
                   {f.kind === "choices" && (
                     <div className="ep-choices" role="radiogroup" aria-label={f.label}>

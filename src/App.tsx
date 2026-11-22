@@ -20,14 +20,15 @@ import FirstChallengeComposer from "./FirstChallengeComposer";
 import EntryPage, { type EntrySpec, type FieldDef, type Values } from "./EntryPage";
 import { composeExplanation, splitExplanation } from "./feynman";
 import { MathHtml } from "./MathField";
+import { TABLE_KIND, newTableDraft, draftToValue, parseTable, serializeTable, tableSummary, type TableDraft } from "./tableExercise";
 
 type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
 type Subject = { id: string; level_id: string; name: string; emoji: string | null; icon_key: string | null; coefficient: number; position: number; is_active: boolean };
 type Chapter = { id: string; subject_id: string; title: string; position: number; status: "draft" | "published"; tag?: string | null; complement?: string | null };
 type LessonSession = { id: string; chapter_id: string; title: string; position: number };
 type Capsule = { id: string; chapter_id: string; title: string; body: string; minutes: number; position: number; kind: string; is_high_yield: boolean; session_id?: string | null };
-type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean };
-type FreeExercise = { id: string; level_id: string | null; label: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_published: boolean };
+type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze" | "table"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean; admin_reference?: string | null };
+type FreeExercise = { id: string; level_id: string | null; label: string | null; kind: "flashcard" | "qcm" | "cloze" | "table"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_published: boolean; admin_reference?: string | null };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
 
 type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "freeexercises" | "firstchallenge" | "semantic" | "reports" | "aiusage" | "faq";
@@ -64,9 +65,14 @@ const cardFields = (withKind: boolean, count: number): FieldDef[] => [
   ...(withKind ? [{ kind: "select" as const, key: "kind", label: "Type de carte", options: [
     { value: "qcm", label: "QCM : une question et des choix" },
     { value: "flashcard", label: "Flashcard : recto / verso" },
-    { value: "cloze", label: "Texte à compléter : réponse attendue" }
+    { value: "cloze", label: "Texte à compléter : réponse attendue" },
+    { value: "table", label: "Tableau à compléter : cellules fixes et cellules vides" }
   ] }] : []),
-  { kind: "math", key: "front", label: "Question / recto", required: true, rows: 3, preview: "title" },
+  { kind: "math", key: "front", label: "Question / recto", required: true, rows: 3, preview: "title", when: v => v.kind !== TABLE_KIND },
+  { kind: "math", key: "table_statement", label: "1 · Énoncé (affiché au-dessus du tableau)", required: true, rows: 3, preview: "title", when: v => v.kind === TABLE_KIND,
+    placeholder: "Ex. : Complète le tableau suivant concernant les états de la matière.", help: "Les formules LaTeX s'écrivent entre $ … $ (Alt+M), comme dans les autres exercices." },
+  { kind: "table", key: "table_grid", statementKey: "table_statement", label: "2 · Construction du tableau", when: v => v.kind === TABLE_KIND,
+    help: "Touche une cellule pour la modifier. « À compléter » cache son contenu à l'élève et le remplace par un champ de saisie ; la réponse attendue reste réservée à la correction." },
   { kind: "choices", key: "choices", label: "Choix de réponse", count, correctKey: "correct", when: v => v.kind === "qcm" },
   { kind: "math", key: "back", label: "Réponse / complément (facultatif)", rows: 2, when: v => v.kind === "qcm" },
   { kind: "math", key: "back", label: "Verso / réponse", required: true, rows: 2, when: v => v.kind === "flashcard" },
@@ -81,6 +87,35 @@ const cardFields = (withKind: boolean, count: number): FieldDef[] => [
     placeholder: "L'essentiel, que l'élève peut répéter avec ses mots." }
 ];
 
+
+/** Valeurs de formulaire d'une carte « tableau » : énoncé + grille (brouillon JSON), relus depuis `front` et `admin_reference`. */
+const tableValues = (front: string | null | undefined, reference: unknown): { table_statement: string; table_grid: string; broken: boolean } => {
+  const parsed = parseTable(front, reference);
+  const draft: TableDraft = parsed?.draft ?? newTableDraft();
+  return { table_statement: parsed?.statement ?? "", table_grid: draftToValue(draft), broken: !parsed };
+};
+/** Colonnes enregistrées pour un tableau : `front` ne contient AUCUNE réponse, `admin_reference` les contient. */
+const tableColumns = (v: Values) => {
+  const { front, adminReference } = serializeTable(str(v.table_statement), JSON.parse(str(v.table_grid)) as TableDraft);
+  return { front, back: null, choices: null, correct_index: null, admin_reference: adminReference };
+};
+
+const TABLE_MIGRATION_MESSAGE = "La migration SQL « tableaux » n'a pas encore été exécutée dans Supabase (colonne admin_reference / type table) : exécute supabase/migrations/20261123_tableaux_a_completer.sql puis recharge cette page.";
+const tableInitial = (row: { kind: string; front: string; admin_reference?: string | null }) =>
+  row.kind === TABLE_KIND ? (({ table_statement, table_grid }) => ({ table_statement, table_grid }))(tableValues(row.front, row.admin_reference)) : {};
+const tableIntro = (row: { front: string; admin_reference?: string | null }) =>
+  tableValues(row.front, row.admin_reference).broken
+    ? "Type : TABLEAU · le contenu enregistré est illisible : reconstruis le tableau ci-dessous puis enregistre."
+    : "Type : TABLEAU À COMPLÉTER";
+/** Cellule « énoncé » des listes : un tableau n'affiche jamais son JSON, seulement l'énoncé et sa taille. */
+function FrontCell({ row }: { row: { kind: string; front: string; admin_reference?: string | null } }) {
+  if (row.kind !== TABLE_KIND) return <MathHtml text={row.front} />;
+  const s = tableSummary(row.front, row.admin_reference);
+  return <><MathHtml text={s.statement} /><small className="muted-cell">{s.detail}</small></>;
+}
+/** Colonne « Réponse » des listes : rien d'autre que le nombre de cellules pour un tableau (les réponses restent dans la modification). */
+const answerCellText = (row: { kind: string; choices: string[] | null; correct_index: number | null; back: string | null }) =>
+  row.kind === TABLE_KIND ? "Voir le tableau" : row.kind === "qcm" && row.choices ? row.choices[row.correct_index ?? 0] ?? "—" : row.back ?? "—";
 
 const questionFields: FieldDef[] = [
   { kind: "math", key: "prompt", label: "Énoncé de la question", required: true, rows: 3, preview: "title" },
@@ -117,6 +152,8 @@ export default function App() {
   const [lessonTab, setLessonTab] = useState<"content" | "exercises">("content");
   const [freeItems, setFreeItems] = useState<FreeExercise[]>([]);
   const [freeMissing, setFreeMissing] = useState(false);
+  // Vrai tant que la migration SQL « tableaux » n'est pas passée : la création d'un tableau est alors refusée avec un message clair.
+  const [tableColumnsMissing, setTableColumnsMissing] = useState(false);
 
   const currentLevel = levels.find(x => x.id === levelId);
   // Catalogue complet dans `levels` ; menus de travail = classes actives uniquement.
@@ -171,7 +208,7 @@ export default function App() {
     if (!activeChapter) { setCapsules([]); setCards([]); setSessions([]); return; }
     const [firstCapsuleTry, cardResult, sessionResult] = await Promise.all([
       supabase.from("capsules").select("id,chapter_id,title,body,minutes,position,kind,is_high_yield,session_id").eq("chapter_id", activeChapter).order("position"),
-      supabase.from("cards").select("id,chapter_id,capsule_id,kind,front,back,choices,correct_index,explanation,position,is_high_yield").eq("chapter_id", activeChapter).order("position"),
+      supabase.from("cards").select("id,chapter_id,capsule_id,kind,front,back,choices,correct_index,explanation,position,is_high_yield,admin_reference").eq("chapter_id", activeChapter).order("position"),
       supabase.from("lesson_sessions").select("id,chapter_id,title,position").eq("chapter_id", activeChapter).order("position")
     ]);
     let capsuleRows: Capsule[];
@@ -183,10 +220,17 @@ export default function App() {
     } else {
       capsuleRows = (firstCapsuleTry.data ?? []) as Capsule[];
     }
-    if (cardResult.error) throw cardResult.error;
+    let cardRows = cardResult;
+    if (cardRows.error) {
+      // Colonne `admin_reference` absente (migration « tableaux » pas encore passée) : lecture des cartes sans elle
+      const retry = await supabase.from("cards").select("id,chapter_id,capsule_id,kind,front,back,choices,correct_index,explanation,position,is_high_yield").eq("chapter_id", activeChapter).order("position");
+      if (retry.error) throw retry.error;
+      cardRows = retry as unknown as typeof cardResult;
+      setTableColumnsMissing(true);
+    } else setTableColumnsMissing(false);
     setSessions(sessionResult.error ? [] : (sessionResult.data ?? []) as LessonSession[]);
     setCapsules(capsuleRows);
-    setCards((cardResult.data ?? []) as Card[]);
+    setCards((cardRows.data ?? []) as Card[]);
   }, []);
 
   const loadBanners = useCallback(async () => {
@@ -197,12 +241,20 @@ export default function App() {
   }, []);
 
   const loadFree = useCallback(async () => {
-    const { data, error } = await supabase.from("free_exercises")
-      .select("id,level_id,label,kind,front,back,choices,correct_index,explanation,position,is_published")
+    let result = await supabase.from("free_exercises")
+      .select("id,level_id,label,kind,front,back,choices,correct_index,explanation,position,is_published,admin_reference")
       .order("position");
-    if (error) { setFreeItems([]); setFreeMissing(true); return; } // table pas encore créée : l'écran l'explique
+    if (result.error) {
+      // Colonne `admin_reference` absente (migration « tableaux » pas encore passée) : on relit sans elle
+      const retry = await supabase.from("free_exercises")
+        .select("id,level_id,label,kind,front,back,choices,correct_index,explanation,position,is_published")
+        .order("position");
+      if (retry.error) { setFreeItems([]); setFreeMissing(true); return; } // table pas encore créée : l'écran l'explique
+      result = retry as unknown as typeof result;
+      setTableColumnsMissing(true);
+    } else setTableColumnsMissing(false);
     setFreeMissing(false);
-    setFreeItems((data ?? []) as FreeExercise[]);
+    setFreeItems((result.data ?? []) as FreeExercise[]);
   }, []);
 
   const refreshCounts = useCallback(async () => {
@@ -518,14 +570,17 @@ export default function App() {
       eyebrow: "CARTE · DOJO", title: "Nouvelle carte", submitLabel: "Créer la carte",
       intro: "Les formules LaTeX s'écrivent entre $ … $ (Alt+M). L'élève les voit rendues dans l'app.",
       fields: cardFields(true, 4),
-      initial: { kind: "qcm", front: "", choices: ["", "", "", ""], correct: "0", back: "", ...explanationValues(null) },
+      initial: { kind: "qcm", front: "", choices: ["", "", "", ""], correct: "0", back: "", table_statement: "", table_grid: draftToValue(newTableDraft()), ...explanationValues(null) },
       onSubmit: v => save(async () => {
         const kind = str(v.kind);
         const isQcm = kind === "qcm";
+        if (kind === TABLE_KIND && tableColumnsMissing) throw new Error(TABLE_MIGRATION_MESSAGE);
         const { error } = await supabase.from("cards").insert({
-          chapter_id: chapterId, capsule_id, kind, front: str(v.front), back: str(v.back) || null,
-          choices: isQcm ? strings(v.choices, 4).map(x => x.trim()) : null, correct_index: isQcm ? Number(str(v.correct)) : null,
-          explanation: explanationFrom(v) || null, position: cards.length
+          chapter_id: chapterId, capsule_id, kind, explanation: explanationFrom(v) || null, position: cards.length,
+          ...(kind === TABLE_KIND ? tableColumns(v) : {
+            front: str(v.front), back: str(v.back) || null,
+            choices: isQcm ? strings(v.choices, 4).map(x => x.trim()) : null, correct_index: isQcm ? Number(str(v.correct)) : null
+          })
         });
         if (error) throw error; await loadLesson(chapterId);
       }, "Carte créée.")
@@ -535,15 +590,18 @@ export default function App() {
     const count = Math.max(4, card.choices?.length ?? 4);
     setEntry({
       eyebrow: "CARTE · DOJO", title: "Modifier la carte", submitLabel: "Enregistrer",
-      intro: `Type : ${card.kind.toUpperCase()}`,
+      intro: card.kind === TABLE_KIND ? tableIntro(card) : `Type : ${card.kind.toUpperCase()}`,
       fields: cardFields(false, count),
-      initial: { kind: card.kind, front: card.front, choices: strings(card.choices ?? [], count), correct: String(card.correct_index ?? 0), back: card.back ?? "", ...explanationValues(card.explanation) },
+      initial: { kind: card.kind, front: card.front, choices: strings(card.choices ?? [], count), correct: String(card.correct_index ?? 0), back: card.back ?? "", ...tableInitial(card), ...explanationValues(card.explanation) },
       onSubmit: v => save(async () => {
         const isQcm = card.kind === "qcm";
-        const { error } = await supabase.from("cards").update({
-          front: str(v.front), back: str(v.back) || null, explanation: explanationFrom(v) || null,
-          ...(isQcm ? { choices: strings(v.choices, count).map(x => x.trim()), correct_index: Number(str(v.correct)) } : {})
-        }).eq("id", card.id);
+        if (card.kind === TABLE_KIND && tableColumnsMissing) throw new Error(TABLE_MIGRATION_MESSAGE);
+        const { error } = await supabase.from("cards").update(card.kind === TABLE_KIND
+          ? { ...tableColumns(v), explanation: explanationFrom(v) || null }
+          : {
+            front: str(v.front), back: str(v.back) || null, explanation: explanationFrom(v) || null,
+            ...(isQcm ? { choices: strings(v.choices, count).map(x => x.trim()), correct_index: Number(str(v.correct)) } : {})
+          }).eq("id", card.id);
         if (error) throw error; await loadLesson(chapterId);
       }, "Carte mise à jour.")
     });
@@ -619,14 +677,18 @@ export default function App() {
       eyebrow: "EXERCICE LIBRE", title: "Nouvel exercice libre", submitLabel: "Créer l’exercice",
       intro: "Un exercice libre ne dépend d'aucun cours. Il est créé en brouillon : tu le publieras quand il sera prêt. Les formules LaTeX s'écrivent entre $ … $ (Alt+M).",
       fields: freeFields(true, 4, null),
-      initial: { level_id: levelId, label: "", kind: "qcm", front: "", choices: ["", "", "", ""], correct: "0", back: "", ...explanationValues(null) },
+      initial: { level_id: levelId, label: "", kind: "qcm", front: "", choices: ["", "", "", ""], correct: "0", back: "", table_statement: "", table_grid: draftToValue(newTableDraft()), ...explanationValues(null) },
       onSubmit: v => save(async () => {
         const kind = str(v.kind);
         const isQcm = kind === "qcm";
+        if (kind === TABLE_KIND && tableColumnsMissing) throw new Error(TABLE_MIGRATION_MESSAGE);
         const { error } = await supabase.from("free_exercises").insert({
-          level_id: str(v.level_id) || null, label: str(v.label) || null, kind, front: str(v.front), back: str(v.back) || null,
-          choices: isQcm ? strings(v.choices, 4).map(x => x.trim()) : null, correct_index: isQcm ? Number(str(v.correct)) : null,
-          explanation: explanationFrom(v) || null, position: freeItems.length, is_published: false
+          level_id: str(v.level_id) || null, label: str(v.label) || null, kind,
+          explanation: explanationFrom(v) || null, position: freeItems.length, is_published: false,
+          ...(kind === TABLE_KIND ? tableColumns(v) : {
+            front: str(v.front), back: str(v.back) || null,
+            choices: isQcm ? strings(v.choices, 4).map(x => x.trim()) : null, correct_index: isQcm ? Number(str(v.correct)) : null
+          })
         });
         if (error) throw error; await loadFree();
       }, "Exercice libre créé en brouillon.")
@@ -636,14 +698,18 @@ export default function App() {
     const count = Math.max(4, item.choices?.length ?? 4);
     setEntry({
       eyebrow: "EXERCICE LIBRE", title: "Modifier l’exercice libre", submitLabel: "Enregistrer",
-      intro: `Type : ${item.kind.toUpperCase()}`,
+      intro: item.kind === TABLE_KIND ? tableIntro(item) : `Type : ${item.kind.toUpperCase()}`,
       fields: freeFields(false, count, item),
-      initial: { level_id: item.level_id ?? "", label: item.label ?? "", kind: item.kind, front: item.front, choices: strings(item.choices ?? [], count), correct: String(item.correct_index ?? 0), back: item.back ?? "", ...explanationValues(item.explanation) },
+      initial: { level_id: item.level_id ?? "", label: item.label ?? "", kind: item.kind, front: item.front, choices: strings(item.choices ?? [], count), correct: String(item.correct_index ?? 0), back: item.back ?? "", ...tableInitial(item), ...explanationValues(item.explanation) },
       onSubmit: v => save(async () => {
         const isQcm = item.kind === "qcm";
+        if (item.kind === TABLE_KIND && tableColumnsMissing) throw new Error(TABLE_MIGRATION_MESSAGE);
         const { error } = await supabase.from("free_exercises").update({
-          level_id: str(v.level_id) || null, label: str(v.label) || null, front: str(v.front), back: str(v.back) || null, explanation: explanationFrom(v) || null,
-          ...(isQcm ? { choices: strings(v.choices, count).map(x => x.trim()), correct_index: Number(str(v.correct)) } : {})
+          level_id: str(v.level_id) || null, label: str(v.label) || null, explanation: explanationFrom(v) || null,
+          ...(item.kind === TABLE_KIND ? tableColumns(v) : {
+            front: str(v.front), back: str(v.back) || null,
+            ...(isQcm ? { choices: strings(v.choices, count).map(x => x.trim()), correct_index: Number(str(v.correct)) } : {})
+          })
         }).eq("id", item.id);
         if (error) throw error; await loadFree();
       }, "Exercice libre mis à jour.")
@@ -824,7 +890,7 @@ export default function App() {
                 </>}
                 {lessonTab==="exercises" && <>
                   <div className="content-subhead"><small>QCM, flashcards et textes à compléter liés à cette leçon.</small><button className="small-primary" onClick={()=>void createCard()}><Plus size={15}/> Exercice</button></div>
-                {cards.length===0?<Empty text="Aucune carte ni exercice dans ce chapitre."/>:<div className="table-wrap"><table><thead><tr><th>Type</th><th>Énoncé / recto</th><th>Réponse</th><th></th></tr></thead><tbody>{cards.map(card=><tr key={card.id}><td><span className="kind-pill">{card.kind.toUpperCase()}</span></td><td className="question-cell"><MathHtml text={card.front}/></td><td><MathHtml text={card.kind==="qcm"&&card.choices?card.choices[card.correct_index??0]??"—":card.back??"—"}/></td><td className="table-actions"><button onClick={()=>void editCard(card)} title="Modifier">✎</button><button onClick={()=>void deleteCard(card)} title="Supprimer"><Trash2 size={14}/></button></td></tr>)}</tbody></table></div>}
+                {cards.length===0?<Empty text="Aucune carte ni exercice dans ce chapitre."/>:<div className="table-wrap"><table><thead><tr><th>Type</th><th>Énoncé / recto</th><th>Réponse</th><th></th></tr></thead><tbody>{cards.map(card=><tr key={card.id}><td><span className="kind-pill">{card.kind.toUpperCase()}</span></td><td className="question-cell"><FrontCell row={card}/></td><td><MathHtml text={answerCellText(card)}/></td><td className="table-actions"><button onClick={()=>void editCard(card)} title="Modifier">✎</button><button onClick={()=>void deleteCard(card)} title="Supprimer"><Trash2 size={14}/></button></td></tr>)}</tbody></table></div>}
                 </>}
               </div>
             </>)}
@@ -836,7 +902,7 @@ export default function App() {
             {!freeMissing && activeLevels.length>1 && <div className="selector-row single"><label>Classe<select value={levelId} onChange={e=>setLevelId(e.target.value)}>{activeLevels.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label></div>}
             {!freeMissing && (freeShown.length===0
               ? <div className="panel"><Empty text="Aucun exercice libre pour cette classe. Crée le premier avec « Nouvel exercice »."/></div>
-              : <div className="panel"><div className="table-wrap"><table><thead><tr><th>Type</th><th>Énoncé</th><th>Réponse</th><th>Classe</th><th>Statut</th><th></th></tr></thead><tbody>{freeShown.map(item=><tr key={item.id}><td><span className="kind-pill">{item.kind.toUpperCase()}</span></td><td className="question-cell"><MathHtml text={item.front}/>{item.label && <small className="muted-cell">{item.label}</small>}</td><td><MathHtml text={item.kind==="qcm"&&item.choices?item.choices[item.correct_index??0]??"—":item.back??"—"}/></td><td>{item.level_id?(levels.find(l=>l.id===item.level_id)?.label??item.level_id):"Toutes"}</td><td><Status status={item.is_published?"published":"draft"}/></td><td className="table-actions"><button onClick={()=>editFree(item)} title="Modifier">✎</button><button onClick={()=>void toggleFree(item)} title={item.is_published?"Dépublier":"Publier"}>{item.is_published?<X size={14}/>:<Check size={14}/>}</button><button onClick={()=>void deleteFree(item)} title="Supprimer"><Trash2 size={14}/></button></td></tr>)}</tbody></table></div></div>)}
+              : <div className="panel"><div className="table-wrap"><table><thead><tr><th>Type</th><th>Énoncé</th><th>Réponse</th><th>Classe</th><th>Statut</th><th></th></tr></thead><tbody>{freeShown.map(item=><tr key={item.id}><td><span className="kind-pill">{item.kind.toUpperCase()}</span></td><td className="question-cell"><FrontCell row={item}/>{item.label && <small className="muted-cell">{item.label}</small>}</td><td><MathHtml text={answerCellText(item)}/></td><td>{item.level_id?(levels.find(l=>l.id===item.level_id)?.label??item.level_id):"Toutes"}</td><td><Status status={item.is_published?"published":"draft"}/></td><td className="table-actions"><button onClick={()=>editFree(item)} title="Modifier">✎</button><button onClick={()=>void toggleFree(item)} title={item.is_published?"Dépublier":"Publier"}>{item.is_published?<X size={14}/>:<Check size={14}/>}</button><button onClick={()=>void deleteFree(item)} title="Supprimer"><Trash2 size={14}/></button></td></tr>)}</tbody></table></div></div>)}
           </section>}
 
           {section === "banners" && <section className="page">
