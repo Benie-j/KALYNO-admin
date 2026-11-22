@@ -265,3 +265,14 @@
 .tab span{background:#edf2ff;color:#2457c5;padding:2px 6px;border-radius:5px;font-size:9px}
 .tab.active{color:#2457c5;border-bottom-color:#2457c5}
 .muted-cell{display:block;color:#9aa4b5;font-size:9px;margin-top:4px;font-weight:500}
+
+/* Panneaux d'aide repliables : dépliés uniquement à la demande de l'éditeur */
+.tool-toggles{display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px;border-bottom:1px solid #edf0f6;background:#fff}
+.tool-toggle{display:inline-flex;align-items:center;gap:6px;border:1px solid #e1e7f0;background:#fff;color:#42516b;border-radius:20px;padding:6px 10px;font-size:11px;font-weight:700}
+.tool-toggle:hover{border-color:#9db7ef;color:var(--blue)}
+.tool-toggle.on{background:#eaf0ff;border-color:#9db7ef;color:var(--blue)}
+.tool-chevron{transition:transform .15s;margin-left:2px}
+.tool-toggle.on .tool-chevron,.mp-toggle.on .tool-chevron{transform:rotate(180deg)}
+.mp-toggle{width:100%;display:flex;align-items:baseline;gap:10px;border:0;background:#fff;padding:11px 14px;text-align:left;color:#202b45}
+.mp-toggle strong{font-size:13px}.mp-toggle span{font-size:11px;color:#7a879d;flex:1}.mp-toggle .tool-chevron{align-self:center}
+.mp-toggle.on{border-bottom:1px solid #e7ebf3}
