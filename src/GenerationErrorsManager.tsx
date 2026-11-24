@@ -239,7 +239,70 @@ export default function GenerationErrorsManager() {
                       {event.error_code && <p><b>Code :</b> {event.error_code}</p>}
                       {event.error_message && <p><b>Message :</b> {event.error_message}</p>}
                       <p><b>Identifiant de génération :</b> <code>{event.run_id}</code></p>
-                      {Object.keys(event.details ?? {}).length > 0 && (
+                      {Boolean(event.details?.prompt) && (
+                        <details className="ger-raw-section">
+                          <summary>Prompt envoyé au fournisseur</summary>
+                          <pre>{String(event.details.prompt)}</pre>
+                        </details>
+                      )}
+
+                      {Boolean(event.details?.validation_report) && (
+                        <div className="ger-validation-report">
+                          <h4>Rapport de validation</h4>
+                          {(event.details.validation_report as Array<{
+                            index: number;
+                            title?: string | null;
+                            valid: boolean;
+                            issues: Array<{
+                              field: string;
+                              code: string;
+                              expected: string;
+                              actual: string;
+                            }>;
+                          }>).map((item, index) => (
+                            <article key={index} className="ger-validation-item">
+                              <div className="ger-event-top">
+                                <strong>
+                                  Exercice {item.index} — {item.title || "Sans titre"}
+                                </strong>
+                                <span className={`ger-status ${item.valid ? "normal" : "failed"}`}>
+                                  {item.valid ? "Valide" : `${item.issues.length} anomalie(s)`}
+                                </span>
+                              </div>
+                              {item.issues.map((issue, i) => (
+                                <div className="ger-issue" key={i}>
+                                  <b>{issue.field}</b>
+                                  <span>Code : {issue.code}</span>
+                                  <p><b>Attendu :</b> {issue.expected}</p>
+                                  <pre><b>Reçu :</b> {issue.actual}</pre>
+                                </div>
+                              ))}
+                            </article>
+                          ))}
+                        </div>
+                      )}
+
+                      {Boolean(event.details?.raw_response) && (
+                        <details className="ger-raw-section">
+                          <summary>Réponse brute du fournisseur</summary>
+                          <button
+                            className="secondary"
+                            onClick={() => void navigator.clipboard.writeText(String(event.details.raw_response))}
+                          >
+                            Copier la réponse brute
+                          </button>
+                          <pre>{String(event.details.raw_response)}</pre>
+                        </details>
+                      )}
+
+                      {Boolean(event.details?.parsed_response) && (
+                        <details className="ger-raw-section">
+                          <summary>Réponse JSON interprétée</summary>
+                          <pre>{JSON.stringify(event.details.parsed_response, null, 2)}</pre>
+                        </details>
+                      )}
+
+                      {!event.details?.raw_response && Object.keys(event.details ?? {}).length > 0 && (
                         <pre>{JSON.stringify(event.details, null, 2)}</pre>
                       )}
                     </details>

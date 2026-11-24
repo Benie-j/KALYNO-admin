@@ -46,3 +46,57 @@
 @media(max-width:600px){
   .ger-search,.ger-search input{width:100%;min-width:0}
 }
+
+.ger-raw-section{
+  margin-top:12px;
+  border:1px solid #e2e8f2;
+  border-radius:9px;
+  padding:12px;
+  background:#fafbfe;
+}
+.ger-raw-section summary{
+  cursor:pointer;
+  font-size:11px;
+  font-weight:800;
+  color:#315eaa;
+  margin-bottom:10px;
+}
+.ger-raw-section pre{
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  max-height:420px;
+  overflow:auto;
+  padding:12px;
+  border-radius:7px;
+  background:#f0f3f8;
+  font-size:10px;
+  line-height:1.6;
+}
+.ger-validation-report{margin-top:14px}
+.ger-validation-report h4{font-size:12px;margin-bottom:10px}
+.ger-validation-item{
+  border:1px solid #e2e8f2;
+  border-radius:9px;
+  padding:12px;
+  margin-bottom:10px;
+}
+.ger-issue{
+  margin-top:10px;
+  padding:10px;
+  background:#fff5f3;
+  border-left:3px solid #d65b52;
+  border-radius:5px;
+  font-size:10px;
+  overflow-wrap:anywhere;
+}
+.ger-issue>span{display:block;color:#a63c35;margin-top:4px}
+.ger-issue p{line-height:1.5}
+.ger-issue pre{
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  background:#fff;
+  padding:8px;
+  border-radius:5px;
+  max-height:180px;
+  overflow:auto;
+}
