@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
-  Activity, AlertCircle, ArrowDown, ArrowDownUp, ArrowUp, BookOpen, Check, ChevronDown, CircleHelp,
+  Activity, AlertCircle, Bell, ArrowDown, ArrowDownUp, ArrowUp, BookOpen, Check, ChevronDown, CircleHelp,
   ClipboardList, Cloud, FileText, GraduationCap, LayoutDashboard, LogOut, Plus,
   Flag, RefreshCw, Rocket, Save, Search, ShieldCheck, Sparkles, Target, Trash2, UploadCloud,
   X, Dumbbell
@@ -16,6 +16,7 @@ import SemanticSettingsManager from "./SemanticSettingsManager";
 import AiUsageManager from "./AiUsageManager";
 import GenerationErrorsManager from "./GenerationErrorsManager";
 import GenerationManager from "./GenerationManager";
+import PushDeliveryManager from "./PushDeliveryManager";
 import ReportsManager, { isWelcomeReport, type ReportSourceRef } from "./ReportsManager";
 import { SlidersHorizontal } from "lucide-react";
 import FirstChallengeComposer from "./FirstChallengeComposer";
@@ -33,7 +34,7 @@ type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "
 type FreeExercise = { id: string; level_id: string | null; label: string | null; kind: "flashcard" | "qcm" | "cloze" | "table"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_published: boolean; admin_reference?: string | null };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "freeexercises" | "firstchallenge" | "semantic" | "reports" | "aiusage" | "generation" | "errors" | "faq";
+type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "freeexercises" | "firstchallenge" | "semantic" | "reports" | "aiusage" | "generation" | "pushes" | "errors" | "faq";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 // Champ facultatif rattaché à la leçon : affiché à l'élève dans un encart repliable en fin de leçon.
 const COMPLEMENT_FIELD: FieldDef = {
@@ -773,6 +774,7 @@ export default function App() {
     { id: "semantic" as Section, label: "Évaluation · Seuils", icon: SlidersHorizontal },
     { id: "aiusage" as Section, label: "Consommation IA", icon: Activity },
     { id: "generation" as Section, label: "Génération IA", icon: Sparkles },
+    { id: "pushes" as Section, label: "Notifications push", icon: Bell },
     { id: "errors" as Section, label: "Erreurs & journaux", icon: AlertCircle },
     { id: "reports" as Section, label: "Signalements élèves", icon: Flag },
     { id: "faq" as Section, label: "Centre d’aide · FAQ", icon: CircleHelp },
@@ -826,6 +828,7 @@ export default function App() {
           {section === "semantic" && <SemanticSettingsManager busy={busy} onNotice={setNotice}/>}
           {section === "aiusage" && <AiUsageManager />}
           {section === "generation" && <GenerationManager onOpenLogs={() => setSection("errors")} />}
+          {section === "pushes" && <PushDeliveryManager />}
           {section === "errors" && <GenerationErrorsManager />}
 
           {section === "reports" && <section className="page">
