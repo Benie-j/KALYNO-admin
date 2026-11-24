@@ -1,0 +1,31 @@
+\
+.gm-page{display:grid;gap:18px}
+.gm-notice{display:flex;gap:13px;align-items:flex-start;padding:16px 18px;border:1px solid #dce7fb;border-radius:14px;background:#f5f8ff;color:#31517e}
+.gm-notice>svg{flex:none;margin-top:2px}
+.gm-notice strong{display:block;font-size:13px;color:#213c67}
+.gm-notice p{margin:5px 0 0;font-size:12px;line-height:1.55;color:#536b8d}
+.gm-panel{padding:20px}
+.gm-panel-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:20px}
+.gm-panel-heading h3{margin:0;font-size:16px}
+.gm-panel-heading p{margin:6px 0 0;color:#78849a;font-size:12px}
+.gm-live{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:999px;background:#edf8f1;color:#28734a;font-size:11px;font-weight:700}
+.gm-live span{width:7px;height:7px;border-radius:50%;background:#39a96b}
+.gm-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.gm-fields label{display:grid;gap:8px;font-size:12px;font-weight:700;color:#46536a}
+.gm-fields select{width:100%;min-height:44px;padding:10px 12px;border:1px solid #dce2ec;border-radius:9px;background:#fff;color:#263247;font:inherit;font-weight:500}
+.gm-fields small{font-size:11px;font-weight:400;color:#8792a5}
+.gm-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:22px}
+.gm-actions>span{font-size:11px;color:#8792a5}
+.gm-state{padding:24px;text-align:center;color:#7b8799;font-size:13px}
+.gm-error{display:flex;gap:9px;align-items:flex-start;margin-top:16px;padding:12px 14px;border:1px solid #f3cccc;border-radius:9px;background:#fff5f5;color:#a62c2c;font-size:12px}
+.gm-result{display:flex;gap:14px;padding:18px;border:1px solid #cfe9d9}
+.gm-result-icon{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:12px;background:#eaf7ef;color:#27834f}
+.gm-result-content{min-width:0;flex:1}
+.gm-result-content>strong{font-size:14px;color:#256b43}
+.gm-result-content>p{margin:5px 0 12px;color:#526174;font-size:12px}
+.gm-result-meta{display:flex;gap:10px 18px;flex-wrap:wrap;margin-bottom:14px;color:#758196;font-size:11px}
+.gm-result-meta b{color:#35445b}
+.gm-result-meta code{font-size:10px;overflow-wrap:anywhere}
+.gm-spin{animation:gm-rotate 1s linear infinite}
+@keyframes gm-rotate{to{transform:rotate(360deg)}}
+@media(max-width:700px){.gm-fields{grid-template-columns:1fr}.gm-panel{padding:15px}.gm-panel-heading{flex-direction:column}.gm-actions{align-items:stretch}.gm-actions .primary{width:100%;justify-content:center}.gm-result{padding:14px}}
