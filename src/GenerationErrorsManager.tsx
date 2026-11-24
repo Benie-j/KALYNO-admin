@@ -22,6 +22,7 @@ type EventRow = {
 
 type Period = "24" | "7" | "30" | "all";
 type Provider = "all" | "gemini" | "groq";
+type FunctionName = "all" | "kalyno-generate" | "kalyno-gemini" | "notify-content";
 
 const fmt = (n: number) => n.toLocaleString("fr-FR");
 
@@ -49,6 +50,8 @@ export default function GenerationErrorsManager() {
   const [rows, setRows] = useState<EventRow[]>([]);
   const [period, setPeriod] = useState<Period>("7");
   const [provider, setProvider] = useState<Provider>("all");
+  const [functionName, setFunctionName] = useState<FunctionName>("all");
+  const [runSearch, setRunSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -74,6 +77,16 @@ export default function GenerationErrorsManager() {
       }
 
       if (provider !== "all") query = query.eq("provider", provider);
+      if (functionName !== "all") query = query.eq("function_name", functionName);
+
+      const search = runSearch.trim();
+      if (search) {
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidPattern.test(search)) {
+          throw new Error("Entre un identifiant de génération UUID complet.");
+        }
+        query = query.eq("run_id", search);
+      }
 
       const { data, error: queryError } = await query;
       if (queryError) throw queryError;
@@ -85,7 +98,7 @@ export default function GenerationErrorsManager() {
     } finally {
       setLoading(false);
     }
-  }, [period, provider]);
+  }, [period, provider, functionName, runSearch]);
 
   useEffect(() => {
     void load();
@@ -141,6 +154,28 @@ export default function GenerationErrorsManager() {
             <option value="groq">Groq</option>
           </select>
         </label>
+        <label>
+          Fonction Supabase
+          <select value={functionName} onChange={e => setFunctionName(e.target.value as FunctionName)}>
+            <option value="all">Toutes les fonctions</option>
+            <option value="kalyno-generate">kalyno-generate</option>
+            <option value="kalyno-gemini">kalyno-gemini</option>
+            <option value="notify-content">notify-content</option>
+          </select>
+        </label>
+        <label className="ger-search">
+          Identifiant de génération
+          <input
+            value={runSearch}
+            onChange={e => setRunSearch(e.target.value)}
+            placeholder="UUID complet de la génération"
+          />
+        </label>
+        {runSearch.trim() && (
+          <button className="secondary" onClick={() => setRunSearch("")}>
+            Effacer la recherche
+          </button>
+        )}
       </div>
 
       {error && (
@@ -218,9 +253,7 @@ export default function GenerationErrorsManager() {
       <div className="ger-note">
         <Activity size={16} />
         <span>
-          Ce journal conserve les événements instrumentés par kalyno-generate.
-          Les journaux bruts des autres services Supabase ne sont pas encore
-          intégrés à cet écran.
+          Les événements détaillés sont enregistrés côté serveur. Les journaux bruts des services Supabase seront intégrés dans une prochaine étape.
         </span>
       </div>
     </section>

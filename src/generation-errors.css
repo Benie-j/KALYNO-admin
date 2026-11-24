@@ -34,3 +34,15 @@
 .ger-note svg{flex:none}
 @media(max-width:950px){.ger-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:600px){.ger-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ger-toolbar{flex-direction:column}.ger-toolbar select{width:100%}.ger-heading{align-items:flex-start;flex-direction:column}.ger-event{padding:14px}.ger-event-top{align-items:flex-start}}
+
+.ger-search input{
+  min-width:240px;
+  border:1px solid #dfe5ef;
+  border-radius:8px;
+  padding:9px 11px;
+  background:#fff;
+  color:#24324d;
+}
+@media(max-width:600px){
+  .ger-search,.ger-search input{width:100%;min-width:0}
+}
