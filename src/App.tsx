@@ -12,7 +12,6 @@ import PlatformApiManager from "./PlatformApiManager";
 import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
 import CapsuleEditor, { renderPreview, type CapsuleEditorDraft } from "./CapsuleEditor";
 import CapsuleEditor, { renderPreview, type CapsuleEditorDraft } from "./CapsuleEditor";
->>>>>>> main
 import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
