@@ -25,24 +25,77 @@ function routePath(url: URL) {
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
-async function authenticate(request: Request, requestId: string) {
-  const token = request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
-  if (!token) return { response: fail(401, "unauthenticated", "Une session KALYNO valide est requise.", requestId) };
+
+type AuthResult =
+  | { ok: false; response: Response }
+  | {
+      ok: true;
+      client: ReturnType<typeof createClient>;
+      userId: string;
+    };
+
+async function authenticate(
+  request: Request,
+  requestId: string,
+): Promise<AuthResult> {
+  const token =
+    request.headers.get("Authorization")
+      ?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
+
+  if (!token) {
+    return {
+      ok: false,
+      response: fail(401, "unauthenticated", "Une session KALYNO valide est requise.", requestId),
+    };
+  }
+
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.error("platform_api_missing_config", requestId);
-    return { response: fail(503, "service_unavailable", "Configuration du service indisponible.", requestId) };
+    return {
+      ok: false,
+      response: fail(503, "service_unavailable", "Configuration du service indisponible.", requestId),
+    };
   }
+
   const client = createClient(SUPABASE_URL, SUPABASE_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
-  const { data: authData, error: authError } = await client.auth.getUser(token);
-  if (authError || !authData.user || authData.user.is_anonymous) return { response: fail(401, "invalid_session", "Session invalide ou expirée. Reconnecte-toi.", requestId) };
-  // Le rôle provient de profiles, jamais de user_metadata modifiable par l'utilisateur.
-  const { data: profile, error: profileError } = await client.from("profiles").select("role").eq("id", authData.user.id).maybeSingle();
-  if (profileError || profile?.role !== "admin") return { response: fail(403, "admin_required", "Cette opération nécessite un compte administrateur KALYNO.", requestId) };
-  return { client, userId: authData.user.id };
+
+  const { data: authData, error: authError } =
+    await client.auth.getUser(token);
+
+  if (authError || !authData.user || authData.user.is_anonymous) {
+    return {
+      ok: false,
+      response: fail(401, "invalid_session", "Session invalide ou expirée. Reconnecte-toi.", requestId),
+    };
+  }
+
+  const { data: profile, error: profileError } = await client
+    .from("profiles")
+    .select("role")
+    .eq("id", authData.user.id)
+    .maybeSingle();
+
+  if (profileError || profile?.role !== "admin") {
+    return {
+      ok: false,
+      response: fail(403, "admin_required", "Cette opération nécessite un compte administrateur KALYNO.", requestId),
+    };
+  }
+
+  return {
+    ok: true,
+    client,
+    userId: authData.user.id,
+  };
 }
+
 function parseJson(raw: string): unknown { try { return JSON.parse(raw); } catch { return null; } }
 
 Deno.serve(async (request: Request) => {
@@ -51,9 +104,9 @@ Deno.serve(async (request: Request) => {
   const path = routePath(new URL(request.url));
   if (!path.startsWith("/v1/")) return fail(404, "not_found", "Route inconnue. L'API commence par /v1.", requestId);
   const auth = await authenticate(request, requestId);
-  if ("response" in auth) return auth.response;
-  const { client, userId } = auth;
+if (!auth.ok) return auth.response;
 
+const { client, userId } = auth;
   try {
     if (path === "/v1/health" && request.method === "GET") return json(200, { ok: true, data: { service: "kalyno-platform-api", version: "1.0.0", status: "ready" } }, requestId);
     if (path === "/v1/capabilities" && request.method === "GET") return json(200, { ok: true, data: { api_version: "v1", modules: [{ id: "studio", status: "active", resources: ["exam-tracks", "exam-drafts"] }], transports: ["rest", "mcp"] } }, requestId);
