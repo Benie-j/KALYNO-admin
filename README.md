@@ -1,48 +1,39 @@
-# KALYNO — Déclenchement manuel de génération
+# KALYNO-admin — Console Platform API
 
-## Ce qui est déjà en production
-- `kalyno-generate` version 16 est ACTIVE.
-- Le mode `manual: true` vérifie côté serveur que l'appelant est un administrateur et que le compte ciblé est un élève.
-- Une clé `manual-<UUID>` sépare les déclenchements manuels de l'idempotence automatique `auto-5h-*`.
-- La génération manuelle est journalisée comme `trigger_source: admin_manual`.
-- La politique RLS de lecture admin sur `student_profiles` est déjà créée en production.
+## Contenu du correctif
+- `src/PlatformApiManager.tsx` : écran dédié de supervision API et gestion des brouillons.
+- `src/PlatformApiManager.css` : styles responsive.
+- Mise à jour de `src/lib/platformApi.ts` : appels health/capabilities/concours, limite de liste alignée sur l'API (100), erreurs avec request ID.
+- Intégration dans `src/App.tsx` : nouvelle entrée latérale « Platform API · Console ».
 
-## Installer l'interface admin depuis Termux
-1. Extraire l'archive dans `~` afin d'obtenir `~/KALYNO-admin/src/GenerationManager.tsx`, `~/KALYNO-admin/src/generation-manager.css` et `~/KALYNO-admin/apply_admin_patch.py`.
-2. Dans Termux :
-   ```sh
-   cd ~/KALYNO-admin
-   python apply_admin_patch.py
-   npm run build
-   ```
-3. Vérifier les changements :
-   ```sh
-   git status --short
-   ```
-4. Si le build passe, enregistrer et pousser :
-   ```sh
-   git add src/App.tsx src/GenerationManager.tsx src/generation-manager.css src/GenerationErrorsManager.tsx
-   git commit -m "feat(admin): déclenchement manuel de génération IA"
-   git push
-   ```
+## Application depuis Termux
+1. Extraire ce ZIP dans `~/KALYNO-admin` (à la racine, pas dans `src`).
+2. Vérifier que les fichiers `install_platform_console.py` et `README.md` sont à la racine.
+3. Lancer :
 
-## Conserver la migration dans le dépôt KALYNO
-La migration SQL incluse est déjà appliquée en production. Elle sert à documenter/versionner la politique RLS ; ne la réexécute pas manuellement dans Supabase.
-```sh
-cd ~/KALYNO
-git status --short
-git add supabase/migrations/20261124_student_profiles_admin_select.sql
-git commit -m "db: autoriser les admins à lire les profils élèves"
-git push
+```bash
+cd ~/KALYNO-admin
+python install_platform_console.py
+npm test
+npm run build
 ```
 
-## Vérification fonctionnelle
-Après déploiement de KALYNO-admin :
-- ouvrir « Génération IA » ;
-- choisir un compte élève avec une classe ;
-- choisir une leçon publiée (ou laisser la sélection automatique) ;
-- lancer la génération ;
-- vérifier le nombre enregistré, le fournisseur et l'ID de run ;
-- ouvrir « Erreurs & journaux » pour examiner les événements du run.
+Le script exige la branche `feat/platform-api-v1`, un dépôt Git propre et les points d'ancrage attendus. Il refuse d'écraser les nouveaux fichiers s'ils existent déjà. Il sauvegarde `App.tsx` et `platformApi.ts` dans `.kalyno-backup-platform-console-*`.
 
-Le build et l'appel réel à Gemini/Groq ne sont pas prétendus comme testés depuis cette archive. Le backend a été déployé et sa source relue ; la génération réelle doit être lancée depuis l'interface admin après son déploiement.
+## Publication
+Uniquement si les tests et le build réussissent :
+
+```bash
+git add src
+git commit -m "feat(admin): add platform API console"
+git push origin feat/platform-api-v1
+```
+
+## Retour arrière
+Depuis la racine du dépôt, remplacer `src/App.tsx` et `src/lib/platformApi.ts` par leurs copies dans le dossier `.kalyno-backup-platform-console-*`, puis supprimer `src/PlatformApiManager.tsx` et `src/PlatformApiManager.css`. Faire cela uniquement si aucun autre changement n'a été ajouté depuis l'installation.
+
+## Limites connues
+- La liste est limitée à 100 éléments car l'API actuelle plafonne `limit` à 100.
+- La suppression n'est pas proposée dans l'interface.
+- Les brouillons restent internes ; « Validé » n'entraîne pas une publication aux élèves.
+- La console nécessite une session Supabase authentifiée avec `profiles.role = admin`.
