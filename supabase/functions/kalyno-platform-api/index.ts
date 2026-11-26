@@ -30,7 +30,7 @@ type AuthResult =
   | { ok: false; response: Response }
   | {
       ok: true;
-      client: ReturnType<typeof createClient>;
+      client: PlatformClient;
       userId: string;
     };
 
