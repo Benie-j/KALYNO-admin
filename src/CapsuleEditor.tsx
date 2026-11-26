@@ -114,7 +114,7 @@ function tintFormula(html: string): string {
 }
 
 // Aperçu élève : le texte nettoyé, avec chaque $...$ / $$...$$ rendu par KaTeX.
-function renderPreview(html: string): string {
+export function renderPreview(html: string): string {
   return cleanHtml(html).replace(/\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g,
     (match: string, block?: string, inline?: string) => {
       try {

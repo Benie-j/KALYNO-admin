@@ -533,3 +533,13 @@
     padding: 22px;
   }
 }
+
+/* Séances / blocs : navigation par vues distinctes */
+.session-crumbs{display:flex;align-items:center;flex-wrap:wrap;gap:2px;padding:12px 14px 0}
+.session-row .status-pill{margin-left:auto}
+.unassigned-row{background:#fffaf0;border-color:#f3e3bd}
+.block-move{max-width:130px;border:1px solid #dfe5ef;border-radius:7px;padding:6px;font-size:10px;background:#fff;color:#24324d}
+.block-preview{padding-bottom:18px}
+.block-preview-meta{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:0 18px 6px;font-size:10px;color:#8b96aa}
+.block-preview-body{margin:6px 18px 0;border:1px solid #e8edf5;border-radius:10px;background:#fff}
+@media (max-width:720px){.chapter-row.session-row,.chapter-row.block-row{flex-wrap:wrap}.chapter-row .row-actions{width:100%;justify-content:flex-end}.block-move{max-width:100%;flex:1}.content-subhead{flex-wrap:wrap}}
