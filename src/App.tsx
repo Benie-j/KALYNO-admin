@@ -8,14 +8,9 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import FrenchConcoursStudio from "./FrenchConcoursStudio";
-<<<<<<< HEAD
-<<<<<<< HEAD
 import PlatformApiManager from "./PlatformApiManager";
 import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
-=======
 import CapsuleEditor, { renderPreview, type CapsuleEditorDraft } from "./CapsuleEditor";
->>>>>>> 8ce1c5c (***)
-=======
 import CapsuleEditor, { renderPreview, type CapsuleEditorDraft } from "./CapsuleEditor";
 >>>>>>> main
 import LevelsManager from "./LevelsManager";
