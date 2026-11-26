@@ -10,7 +10,7 @@ permissions:
 jobs:
   check:
   - name: Install dependencies
-  17         run: npm ci
+    run: npm ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
