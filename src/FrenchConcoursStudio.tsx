@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, BookOpen, Check, ChevronDown, ClipboardList, FilePlus2, RefreshCw, Save, Search, ShieldCheck } from "lucide-react";
-import { supabase } from "./lib/supabase";
+import { listExamDrafts, createExamDraft, updateExamDraft } from "./lib/platformApi";
 import "./FrenchConcoursStudio.css";
 
 type Track = "cafop" | "police" | "fonction_publique" | "ena" | "injs";
@@ -46,13 +46,15 @@ export default function FrenchConcoursStudio() {
 
   const load = useCallback(async () => {
     setLoading(true); setNotice("");
-    const { data, error } = await supabase.from("exam_content_drafts").select("*").order("updated_at", { ascending: false }).limit(250);
-    if (error) setNotice(`Chargement impossible : ${error.message}`);
-    else {
-      const list = (data ?? []) as Draft[]; setRows(list);
+    try {
+      const list = await listExamDrafts(250);
+      setRows(list);
       setSelected(current => list.some(x => x.id === current) ? current : (list[0]?.id ?? ""));
+    } catch (error) {
+      setNotice(`Chargement impossible : ${errorMessage(error)}`);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -79,20 +81,29 @@ export default function FrenchConcoursStudio() {
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 600) { setNotice("La durée doit être un nombre entier entre 1 et 600 minutes."); return; }
     setSaving(true); setNotice("");
     const payload = { exam_track: form.exam_track, content_type: form.content_type, title: form.title.trim(), objective: form.objective.trim() || null, difficulty: form.difficulty, estimated_minutes: minutes, source_note: form.source_note.trim() || null, content, origin: "admin" };
-    const result = creating
-      ? await supabase.from("exam_content_drafts").insert(payload).select("id").single()
-      : await supabase.from("exam_content_drafts").update(payload).eq("id", selected).select("id").single();
-    if (result.error) setNotice(`Enregistrement impossible : ${result.error.message}`);
-    else { setNotice(creating ? "Brouillon créé." : "Brouillon mis à jour."); setCreating(false); setEdit(false); await load(); if (result.data?.id) setSelected(result.data.id); }
-    setSaving(false);
+    try {
+      const saved = creating ? await createExamDraft(payload) : await updateExamDraft(selected, payload);
+      setNotice(creating ? "Brouillon créé." : "Brouillon mis à jour.");
+      setCreating(false); setEdit(false); await load();
+      if (saved?.id) setSelected(saved.id);
+    } catch (error) {
+      setNotice(`Enregistrement impossible : ${errorMessage(error)}`);
+    } finally {
+      setSaving(false);
+    }
   }
   async function changeStatus(row: Draft, next: Status) {
     if (next === "approved" && !window.confirm("Confirmer la validation pédagogique de ce contenu ? Cela ne le publie pas aux élèves.")) return;
     setSaving(true); setNotice("");
-    const { error } = await supabase.from("exam_content_drafts").update({ status: next }).eq("id", row.id);
-    if (error) setNotice(`Changement de statut impossible : ${error.message}`);
-    else { setNotice("Statut mis à jour. Aucune publication élève n'a été effectuée."); await load(); }
-    setSaving(false);
+    try {
+      await updateExamDraft(row.id, { status: next });
+      setNotice("Statut mis à jour. Aucune publication élève n'a été effectuée.");
+      await load();
+    } catch (error) {
+      setNotice(`Changement de statut impossible : ${errorMessage(error)}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return <section className="page fcs-page">

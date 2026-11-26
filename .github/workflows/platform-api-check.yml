@@ -1,0 +1,19 @@
+name: KALYNO Platform API checks
+on:
+  pull_request:
+    paths: ["supabase/functions/kalyno-platform-api/**", "docs/openapi.yaml", ".github/workflows/platform-api-check.yml"]
+  push:
+    paths: ["supabase/functions/kalyno-platform-api/**", "docs/openapi.yaml", ".github/workflows/platform-api-check.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check supabase/functions/kalyno-platform-api/index.ts
+      - run: deno test supabase/functions/kalyno-platform-api/contract_test.ts

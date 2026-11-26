@@ -1,0 +1,102 @@
+openapi: 3.1.0
+info:
+  title: KALYNO Platform API
+  version: 1.0.0
+  description: API métier versionnée KALYNO. Module actif initial : Studio de préparation aux concours.
+servers:
+  - url: https://nscxeuaouowaemlqjagk.supabase.co/functions/v1/kalyno-platform-api
+security:
+  - bearerAuth: []
+    publishableKey: []
+paths:
+  /v1/health:
+    get:
+      summary: Vérifier l'état de l'API
+      responses:
+        "200": { description: API disponible }
+  /v1/capabilities:
+    get:
+      summary: Lister les modules actifs
+      responses:
+        "200": { description: Modules disponibles }
+  /v1/exam-tracks:
+    get:
+      summary: Lister les concours
+      responses:
+        "200": { description: Concours disponibles }
+  /v1/studio/drafts:
+    get:
+      summary: Lister les brouillons du Studio
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { in: query, name: exam_track, schema: { type: string, enum: [cafop, police, fonction_publique, ena, injs] } }
+        - { in: query, name: content_type, schema: { type: string, enum: [course, exercise, dictation, mock_exam] } }
+        - { in: query, name: status, schema: { type: string, enum: [draft, review, approved, archived] } }
+      responses:
+        "200": { description: Liste des brouillons }
+    post:
+      summary: Créer un brouillon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DraftInput" }
+      responses:
+        "201": { description: Brouillon créé }
+        "400": { description: Données invalides }
+  /v1/studio/drafts/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: Lire un brouillon
+      responses:
+        "200": { description: Brouillon trouvé }
+        "404": { description: Introuvable }
+    patch:
+      summary: Modifier un brouillon ou son statut
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DraftPatch" }
+      responses:
+        "200": { description: Brouillon modifié }
+        "400": { description: Données invalides }
+    delete:
+      summary: Supprimer définitivement un brouillon
+      parameters:
+        - { in: query, name: confirm, required: true, schema: { type: string, enum: ["true"] } }
+      responses:
+        "200": { description: Supprimé }
+        "409": { description: Confirmation requise }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    publishableKey: { type: apiKey, in: header, name: apikey }
+  schemas:
+    DraftInput:
+      type: object
+      required: [exam_track, content_type, title, content]
+      properties:
+        exam_track: { type: string, enum: [cafop, police, fonction_publique, ena, injs] }
+        content_type: { type: string, enum: [course, exercise, dictation, mock_exam] }
+        title: { type: string, minLength: 3, maxLength: 180 }
+        objective: { type: string, maxLength: 1200 }
+        difficulty: { type: string, enum: [foundation, intermediate, advanced] }
+        estimated_minutes: { type: integer, minimum: 1, maximum: 600 }
+        content: { type: object }
+        source_note: { type: [string, "null"], maxLength: 1500 }
+    DraftPatch:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        exam_track: { type: string, enum: [cafop, police, fonction_publique, ena, injs] }
+        content_type: { type: string, enum: [course, exercise, dictation, mock_exam] }
+        title: { type: string, minLength: 3, maxLength: 180 }
+        objective: { type: string, maxLength: 1200 }
+        difficulty: { type: string, enum: [foundation, intermediate, advanced] }
+        estimated_minutes: { type: integer, minimum: 1, maximum: 600 }
+        content: { type: object }
+        source_note: { type: [string, "null"], maxLength: 1500 }
+        status: { type: string, enum: [draft, review, approved, archived] }

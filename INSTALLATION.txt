@@ -1,0 +1,52 @@
+KALYNO PLATFORM API v1 — LIVRABLE INITIAL
+
+Le dépôt GitHub a été inspecté en lecture seule. Ce patch est destiné à être appliqué localement dans Termux.
+
+1. Vérifie d'abord l'état local :
+   cd ~/KALYNO-admin
+   git status --short
+   Si des modifications existent, sauvegarde-les/commit-les avant de continuer.
+
+2. Crée une branche de travail :
+   git switch -c feat/platform-api-v1
+
+3. Décompresse l'archive à la racine du dépôt :
+   unzip -n ~/storage/downloads/kalyno-platform-api-v1.zip -d ~/KALYNO-admin
+
+4. Applique le raccordement ciblé de French Studio :
+   cd ~/KALYNO-admin
+   python apply_platform_api.py
+   Le script refuse d'agir si les blocs attendus ne correspondent pas ou si d'autres changements locaux sont détectés. Il sauvegarde le composant avant modification dans ~/kalyno-backups/.
+
+5. Tests frontend :
+   npm test
+   npm run build
+   git diff --check
+
+6. Tests Edge Function si Deno est installé :
+   deno fmt --check supabase/functions/kalyno-platform-api
+   deno check supabase/functions/kalyno-platform-api/index.ts
+   deno test supabase/functions/kalyno-platform-api/contract_test.ts
+   Sinon, le workflow platform-api-check.yml exécutera ces contrôles sur GitHub Actions après push/PR.
+
+7. Inspecte le diff, puis commit/push :
+   git status --short
+   git diff -- src/FrenchConcoursStudio.tsx
+   git add .github/workflows/platform-api-check.yml docs/openapi.yaml docs/platform-api.md src/lib/platformApi.ts src/FrenchConcoursStudio.tsx supabase/functions/kalyno-platform-api
+   git commit -m "feat(api): add versioned KALYNO platform API"
+   git push -u origin feat/platform-api-v1
+
+DÉPLOIEMENT SUPABASE — À EFFECTUER APRÈS VALIDATION
+- Nom : kalyno-platform-api
+- verify_jwt : true
+- Déployer ensemble index.ts et contract.ts.
+- La fonction utilise SUPABASE_URL et SUPABASE_ANON_KEY fournis par Supabase.
+- Aucun secret service_role ne doit être ajouté au frontend.
+- Pas de migration SQL nécessaire pour ce premier périmètre.
+- Tests de sécurité : administrateur => 200 ; utilisateur connecté non-admin => 403 ; sans JWT => 401 ; JSON invalide => 400 ; suppression sans confirmation => 409.
+
+RETOUR ARRIÈRE
+- Avant commit : git checkout -- src/FrenchConcoursStudio.tsx
+- Supprimer les fichiers nouveaux listés dans le `git add` ci-dessus.
+- La copie d'origine est conservée dans ~/kalyno-backups/platform-api-v1-<horodatage>/.
+- Ne pas toucher aux anciennes sauvegardes.
