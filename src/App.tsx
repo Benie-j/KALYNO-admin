@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import FrenchConcoursStudio from "./FrenchConcoursStudio";
+import PlatformApiManager from "./PlatformApiManager";
 import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
 import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
@@ -35,7 +36,7 @@ type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "
 type FreeExercise = { id: string; level_id: string | null; label: string | null; kind: "flashcard" | "qcm" | "cloze" | "table"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_published: boolean; admin_reference?: string | null };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
 
-type Section = "frenchstudio" | "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "freeexercises" | "firstchallenge" | "semantic" | "reports" | "aiusage" | "generation" | "pushes" | "errors" | "faq";
+type Section = "frenchstudio" | "platformapi" | "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "freeexercises" | "firstchallenge" | "semantic" | "reports" | "aiusage" | "generation" | "pushes" | "errors" | "faq";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 // Champ facultatif rattaché à la leçon : affiché à l'élève dans un encart repliable en fin de leçon.
 const COMPLEMENT_FIELD: FieldDef = {
@@ -768,6 +769,7 @@ export default function App() {
     { id: "levels" as Section, label: "Classes & séries", icon: GraduationCap },
     { id: "courses" as Section, label: "Cours & leçons", icon: BookOpen },
     { id: "frenchstudio" as Section, label: "Studio français · Concours", icon: BookOpen },
+    { id: "platformapi" as Section, label: "Platform API · Console", icon: Cloud },
     { id: "freeexercises" as Section, label: "Exercices libres", icon: Dumbbell },
     { id: "themes" as Section, label: "Thèmes · Organisation", icon: ArrowDownUp },
     { id: "banners" as Section, label: "Explorer · À la une", icon: Sparkles },
@@ -828,6 +830,7 @@ export default function App() {
           </section>}
 
           {section === "frenchstudio" && <FrenchConcoursStudio />}
+          {section === "platformapi" && <PlatformApiManager />}
           {section === "semantic" && <SemanticSettingsManager busy={busy} onNotice={setNotice}/>}
           {section === "aiusage" && <AiUsageManager />}
           {section === "generation" && <GenerationManager onOpenLogs={() => setSection("errors")} />}
