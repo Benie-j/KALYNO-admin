@@ -15,7 +15,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: deno check supabase/functions/kalyno-platform-api/index.ts
       - name: Install dependencies
-         run: npm ci
-      - run: deno test supabase/functions/kalyno-platform-api/contract_test.ts
+        run: npm ci
+        run: deno check supabase/functions/kalyno-platform-api/index.ts
+        run: deno test supabase/functions/kalyno-platform-api/contract_test.ts
