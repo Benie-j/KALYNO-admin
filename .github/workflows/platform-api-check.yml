@@ -10,13 +10,14 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-          # Installer les dépendances déclarées dans package-lock.json
-                - name: Install dependencies
-                        run: npm ci
     steps:
       - uses: actions/checkout@v6
       - uses: denoland/setup-deno@v2
         with:
+
+       # Installer les dépendances déclarées dans package-lock.json
+      - name: Install dependencies
+        run: npm ci
           deno-version: v2.x
       - run: deno check supabase/functions/kalyno-platform-api/index.ts
       - run: deno test supabase/functions/kalyno-platform-api/contract_test.ts
