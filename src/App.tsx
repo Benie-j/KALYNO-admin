@@ -1,12 +1,18 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
-  Activity, AlertCircle, ArrowDown, ArrowDownUp, ArrowUp, BookOpen, Check, ChevronDown, CircleHelp,
+  Activity, AlertCircle, Bell, ArrowDown, ArrowDownUp, ArrowUp, BookOpen, Check, ChevronDown, CircleHelp,
   ClipboardList, Cloud, FileText, GraduationCap, LayoutDashboard, LogOut, Plus,
   Flag, RefreshCw, Rocket, Save, Search, ShieldCheck, Sparkles, Target, Trash2, UploadCloud,
   X, Dumbbell, Eye, EyeOff, ArrowLeft, ChevronRight
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import GenerationErrorsManager from "./GenerationErrorsManager";
+import PushDeliveryManager from "./PushDeliveryManager";
+import GenerationManager from "./GenerationManager";
+import AiUsageManager from "./AiUsageManager";
+import PlatformApiManager from "./PlatformApiManager";
+import FrenchConcoursStudio from "./FrenchConcoursStudio";
 import CapsuleEditor, { renderPreview, type CapsuleEditorDraft } from "./CapsuleEditor";
 import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
@@ -29,7 +35,7 @@ type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "
 type FreeExercise = { id: string; level_id: string | null; label: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_published: boolean };
 type Banner = { id: string; title: string; subtitle: string | null; button_label: string | null; chapter_id: string | null; level_id: string | null; position: number; is_active: boolean };
 
-type Section = "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "freeexercises" | "firstchallenge" | "semantic" | "reports" | "faq";
+type Section = "errors" | "pushes" | "generation" | "aiusage" | "platformapi" | "frenchstudio" | "overview" | "levels" | "courses" | "banners" | "motivation" | "themes" | "freeexercises" | "firstchallenge" | "semantic" | "reports" | "faq";
 const SUBJECT_ICONS = ["backpack","graduation-cap","book-open","pen-line","calculator","flask-conical","globe","brain","layers","target","lightbulb","rocket","trophy","dumbbell"];
 // Champ facultatif rattaché à la leçon : affiché à l'élève dans un encart repliable en fin de leçon.
 const COMPLEMENT_FIELD: FieldDef = {
@@ -725,6 +731,12 @@ export default function App() {
   );
 
   const nav = [
+    { id: "frenchstudio" as Section, label: "Studio français · Concours", icon: BookOpen },
+    { id: "platformapi" as Section, label: "Platform API · Console", icon: Cloud },
+    { id: "aiusage" as Section, label: "Consommation IA", icon: Activity },
+    { id: "generation" as Section, label: "Génération IA", icon: Sparkles },
+    { id: "pushes" as Section, label: "Notifications push", icon: Bell },
+    { id: "errors" as Section, label: "Erreurs & journaux", icon: AlertCircle },
     { id: "overview" as Section, label: "Vue générale", icon: LayoutDashboard },
     { id: "levels" as Section, label: "Classes & séries", icon: GraduationCap },
     { id: "courses" as Section, label: "Cours & leçons", icon: BookOpen },
@@ -783,6 +795,12 @@ export default function App() {
             <div className="info-banner"><div className="info-symbol"><Cloud size={21}/></div><div><strong>Une seule source de vérité</strong><p>Les cours et défis publiés ici sont lus par l’application Android via les politiques RLS de Supabase. Les brouillons restent réservés à l’administration.</p></div><ShieldCheck className="info-check" size={22}/></div>
           </section>}
 
+          {section === "frenchstudio" && <FrenchConcoursStudio />}
+          {section === "platformapi" && <PlatformApiManager />}
+          {section === "aiusage" && <AiUsageManager />}
+          {section === "generation" && <GenerationManager onOpenLogs={() => setSection("errors")} />}
+          {section === "pushes" && <PushDeliveryManager />}
+          {section === "errors" && <GenerationErrorsManager />}
           {section === "semantic" && <SemanticSettingsManager busy={busy} onNotice={setNotice}/>}
 
           {section === "reports" && <section className="page">
