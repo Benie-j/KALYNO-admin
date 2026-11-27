@@ -4,10 +4,10 @@ import {
   Activity, AlertCircle, ArrowDown, ArrowDownUp, ArrowUp, BookOpen, Check, ChevronDown, CircleHelp,
   ClipboardList, Cloud, FileText, GraduationCap, LayoutDashboard, LogOut, Plus,
   Flag, RefreshCw, Rocket, Save, Search, ShieldCheck, Sparkles, Target, Trash2, UploadCloud,
-  X, Dumbbell
+  X, Dumbbell, Eye, EyeOff, ArrowLeft, ChevronRight
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
-import CapsuleEditor, { type CapsuleEditorDraft } from "./CapsuleEditor";
+import CapsuleEditor, { renderPreview, type CapsuleEditorDraft } from "./CapsuleEditor";
 import LevelsManager from "./LevelsManager";
 import ThemesManager from "./ThemesManager";
 import MotivationManager from "./MotivationManager";
@@ -23,7 +23,7 @@ import { MathHtml } from "./MathField";
 type Level = { id: string; label: string; position: number; is_active: boolean; cycle: string | null; icon_key: string | null; tagline: string | null };
 type Subject = { id: string; level_id: string; name: string; emoji: string | null; icon_key: string | null; coefficient: number; position: number; is_active: boolean };
 type Chapter = { id: string; subject_id: string; title: string; position: number; status: "draft" | "published"; tag?: string | null; complement?: string | null };
-type LessonSession = { id: string; chapter_id: string; title: string; position: number };
+type LessonSession = { id: string; chapter_id: string; title: string; position: number; is_available?: boolean };
 type Capsule = { id: string; chapter_id: string; title: string; body: string; minutes: number; position: number; kind: string; is_high_yield: boolean; session_id?: string | null };
 type Card = { id: string; chapter_id: string; capsule_id: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_high_yield: boolean };
 type FreeExercise = { id: string; level_id: string | null; label: string | null; kind: "flashcard" | "qcm" | "cloze"; front: string; back: string | null; choices: string[] | null; correct_index: number | null; explanation: string | null; position: number; is_published: boolean };
@@ -37,6 +37,8 @@ const COMPLEMENT_FIELD: FieldDef = {
   placeholder: "Ex. : œuvre intégrale à lire, rappel de méthode, lien utile…",
   help: "Laisse vide s'il n'y a rien à ajouter : l'encart n'apparaît alors pas chez l'élève."
 };
+// Valeur interne : section « Blocs non affectés » (capsules.session_id IS NULL)
+const UNASSIGNED = "__none__";
 const KIND_LABEL: Record<string, string> = { intro: "Introduction", text: "Texte", rule: "Règle / formule", tip: "Astuce", pitfall: "Piège à éviter" };
 
 function errorText(error: unknown) {
@@ -114,6 +116,18 @@ export default function App() {
   // Parcours de création : 1 = disciplines, 2 = leçons d'une discipline, 3 = une leçon (contenu / exercices)
   const [courseView, setCourseView] = useState<"subjects" | "lessons" | "lesson">("subjects");
   const [lessonTab, setLessonTab] = useState<"content" | "exercises">("content");
+  // Navigation pédagogique : séances -> blocs d'une séance -> aperçu complet (lecture seule) d'un bloc
+  const [sessionView, setSessionView] = useState<"sessions" | "blocks" | "preview">("sessions");
+  const [openSessionId, setOpenSessionId] = useState("");
+  const [previewId, setPreviewId] = useState("");
+  useEffect(() => { setSessionView("sessions"); setOpenSessionId(""); setPreviewId(""); }, [chapterId]);
+  const scopeCapsules = useMemo(() => capsules
+    .filter(c => openSessionId === UNASSIGNED ? !c.session_id : c.session_id === openSessionId)
+    .sort((a, b) => a.position - b.position), [capsules, openSessionId]);
+  const unassignedCount = capsules.filter(c => !c.session_id).length;
+  const openSession = sessions.find(s => s.id === openSessionId);
+  const previewCapsule = capsules.find(c => c.id === previewId);
+  const scopeLabel = openSessionId === UNASSIGNED ? "Blocs non affectés" : openSession ? `Séance ${sessions.findIndex(x => x.id === openSession.id) + 1} — ${openSession.title}` : "Séance";
   const [freeItems, setFreeItems] = useState<FreeExercise[]>([]);
   const [freeMissing, setFreeMissing] = useState(false);
 
@@ -171,7 +185,7 @@ export default function App() {
     const [firstCapsuleTry, cardResult, sessionResult] = await Promise.all([
       supabase.from("capsules").select("id,chapter_id,title,body,minutes,position,kind,is_high_yield,session_id").eq("chapter_id", activeChapter).order("position"),
       supabase.from("cards").select("id,chapter_id,capsule_id,kind,front,back,choices,correct_index,explanation,position,is_high_yield").eq("chapter_id", activeChapter).order("position"),
-      supabase.from("lesson_sessions").select("id,chapter_id,title,position").eq("chapter_id", activeChapter).order("position")
+      supabase.from("lesson_sessions").select("id,chapter_id,title,position,is_available").eq("chapter_id", activeChapter).order("position")
     ]);
     let capsuleRows: Capsule[];
     if (firstCapsuleTry.error) {
@@ -183,7 +197,11 @@ export default function App() {
       capsuleRows = (firstCapsuleTry.data ?? []) as Capsule[];
     }
     if (cardResult.error) throw cardResult.error;
-    setSessions(sessionResult.error ? [] : (sessionResult.data ?? []) as LessonSession[]);
+    if (sessionResult.error) {
+      // Colonne `is_available` absente : relecture sans elle (les séances restent administrables)
+      const retry = await supabase.from("lesson_sessions").select("id,chapter_id,title,position").eq("chapter_id", activeChapter).order("position");
+      setSessions(retry.error ? [] : (retry.data ?? []) as LessonSession[]);
+    } else setSessions((sessionResult.data ?? []) as LessonSession[]);
     setCapsules(capsuleRows);
     setCards((cardResult.data ?? []) as Card[]);
   }, []);
@@ -412,11 +430,11 @@ export default function App() {
       intro: `Leçon : ${currentChapter?.title ?? "—"}`,
       fields: [
         { kind: "math", key: "title", label: "Intitulé de la séance", required: true, single: true, placeholder: "Ex. : Présentation de l'auteur et contexte de l'œuvre", preview: "title",
-          help: "Le numéro (Séance 1, Séance 2…) est ajouté automatiquement selon l'ordre. En littérature africaine : présentation de l'auteur, lecture d'un extrait, étude des thèmes, expression écrite…" }
+          help: "La séance est créée masquée : les élèves ne la voient qu'après publication. Le numéro (Séance 1, Séance 2…) est ajouté automatiquement selon l'ordre. En littérature africaine : présentation de l'auteur, lecture d'un extrait, étude des thèmes, expression écrite…" }
       ],
       initial: { title: "" },
       onSubmit: v => save(async () => {
-        const { error } = await supabase.from("lesson_sessions").insert({ chapter_id: chapterId, title: str(v.title), position: sessions.length });
+        const { error } = await supabase.from("lesson_sessions").insert({ chapter_id: chapterId, title: str(v.title), position: sessions.length, is_available: false });
         if (error) throw error; await loadLesson(chapterId);
       }, "Séance créée.")
     });
@@ -449,10 +467,23 @@ export default function App() {
     if (!confirm(`Supprimer la séance « ${session.title} » ? Ses blocs sont conservés, sans séance.`)) return;
     await runAction(async () => {
       const { error } = await supabase.from("lesson_sessions").delete().eq("id", session.id);
-      if (error) throw error; await loadLesson(chapterId);
+      if (error) throw error;
+      if (openSessionId === session.id) { setSessionView("sessions"); setOpenSessionId(""); }
+      await loadLesson(chapterId);
     }, "Séance supprimée.");
   }
+  async function toggleSessionAvailability(session: LessonSession) {
+    const next = !session.is_available;
+    if (next && !confirm(`Publier « ${session.title} » ? Les élèves pourront la consulter.`)) return;
+    await runAction(async () => {
+      const { data, error } = await supabase.from("lesson_sessions").update({ is_available: next }).eq("id", session.id).select("id,is_available").single();
+      if (error) throw error;
+      if (!data || data.is_available !== next) throw new Error("Le changement de disponibilité n'a pas été confirmé par Supabase.");
+      await loadLesson(chapterId);
+    }, next ? "Séance publiée pour les élèves." : "Séance masquée aux élèves (son contenu est conservé).");
+  }
   async function assignCapsule(capsule: Capsule, sessionId: string) {
+    if (!confirm(sessionId ? "Déplacer ce bloc vers la séance choisie ?" : "Retirer ce bloc de sa séance ? Il ira dans « Blocs non affectés ».")) return;
     await runAction(async () => {
       const { error } = await supabase.from("capsules").update({ session_id: sessionId || null }).eq("id", capsule.id);
       if (error) throw error; await loadLesson(chapterId);
@@ -489,7 +520,8 @@ export default function App() {
           kind: draft.kind,
           minutes: draft.minutes,
           is_high_yield: draft.is_high_yield,
-          position: capsules.length
+          position: capsules.length,
+          ...(sessionView !== "sessions" && openSessionId && openSessionId !== UNASSIGNED ? { session_id: openSessionId } : {})
         });
         if (error) throw error;
       }
@@ -813,11 +845,63 @@ export default function App() {
                   <button role="tab" aria-selected={lessonTab==="exercises"} className={`tab ${lessonTab==="exercises"?"active":""}`} onClick={()=>setLessonTab("exercises")}>Exercices <span>{cards.length}</span></button>
                 </div>
                 {lessonTab==="content" && <>
-                  <div className="content-subhead"><small>Découpe la leçon en séances (facultatif), puis ajoute ses blocs de cours dans l’ordre de présentation.</small><button className="small-primary" onClick={()=>void createCapsule()}><Plus size={15}/> Bloc de cours</button></div>
-                <div className="content-subhead"><h4>Séances <span>{sessions.length}</span></h4><div className="panel-actions"><small>Étapes chronologiques de la leçon (Séance 1, Séance 2…)</small><button className="small-primary" onClick={()=>void createSession()}><Plus size={15}/> Séance</button></div></div>
-                {sessions.length===0?<Empty text="Aucune séance. Sans séance, les blocs s’affichent à la suite, comme avant."/>:<div className="item-list">{sessions.map((session,i)=><div key={session.id} className="chapter-row"><span className="chapter-number">{i+1}</span><span className="chapter-title"><strong><MathHtml text={session.title}/></strong><small>Séance {i+1} · {capsules.filter(c=>c.session_id===session.id).length} bloc(s)</small></span><div className="row-actions"><button title="Monter" disabled={i===0} onClick={()=>void moveSession(session,-1)}><ArrowUp size={14}/></button><button title="Descendre" disabled={i===sessions.length-1} onClick={()=>void moveSession(session,1)}><ArrowDown size={14}/></button><button title="Modifier" onClick={()=>editSession(session)}>✎</button><button title="Supprimer" onClick={()=>void deleteSession(session)}><Trash2 size={14}/></button></div></div>)}</div>}
-                <div className="content-subhead"><h4>Blocs pédagogiques <span>{capsules.length}</span></h4><small>Ordre de présentation de la leçon</small></div>
-                {capsules.length===0?<Empty text="Aucun bloc. Ajoute une introduction, une explication, une règle ou une astuce."/>:<div className="capsule-grid">{capsules.map((capsule,i)=><article className="capsule-card" key={capsule.id}><div className="capsule-top"><span className="capsule-index">{String(i+1).padStart(2,"0")}</span><span className="kind-pill">{KIND_LABEL[capsule.kind]??capsule.kind}</span><button className="text-icon" onClick={()=>void editCapsule(capsule)} title="Modifier">✎</button><button className="text-icon danger" onClick={()=>void deleteCapsule(capsule)} title="Supprimer"><Trash2 size={14}/></button></div><h4>{capsule.title}</h4><p>{capsule.body||"Aucun texte dans ce bloc."}</p><div className="capsule-footer"><span>{capsule.minutes} min</span><span>{capsule.is_high_yield?"Prioritaire":"Bloc de leçon"}</span></div><label style={{display:"block",marginTop:8,fontSize:10,color:"#6f7b91",fontWeight:700}}>Séance<select value={capsule.session_id??""} disabled={sessions.length===0} onChange={e=>void assignCapsule(capsule,e.target.value)} style={{width:"100%",marginTop:4,border:"1px solid #dfe5ef",borderRadius:7,padding:6,fontSize:11,background:"#fff"}}><option value="">Hors séance</option>{sessions.map((s,i)=><option key={s.id} value={s.id}>{`Séance ${i+1}`}</option>)}</select></label></article>)}</div>}
+                {sessionView!=="sessions" && <nav className="crumbs session-crumbs" aria-label="Fil de navigation">
+                  <button className="crumb" onClick={()=>{setSessionView("sessions");setPreviewId("");}}>Séances</button><span className="crumb-sep"><ChevronRight size={12}/></span>
+                  {sessionView==="blocks" ? <span className="crumb current">{scopeLabel}</span> : <><button className="crumb" onClick={()=>setSessionView("blocks")}>{scopeLabel}</button><span className="crumb-sep"><ChevronRight size={12}/></span><span className="crumb current">Bloc {previewCapsule ? scopeCapsules.findIndex(c=>c.id===previewCapsule.id)+1 : ""}</span></>}
+                </nav>}
+
+                {sessionView==="sessions" && <>
+                  <div className="content-subhead"><h4>Séances <span>{sessions.length}</span></h4><div className="panel-actions"><small>Ouvre une séance pour voir ses blocs. Une nouvelle séance est masquée aux élèves tant qu’elle n’est pas publiée.</small><button className="small-primary" disabled={busy} onClick={()=>void createSession()}><Plus size={15}/> Séance</button></div></div>
+                  {sessions.length===0 && unassignedCount===0 ? <Empty text="Aucune séance et aucun bloc. Crée une séance, puis ajoute ses blocs."/> : <div className="item-list">
+                    {sessions.map((session,i)=><div key={session.id} className="chapter-row session-row">
+                      <button className="chapter-select" onClick={()=>{setOpenSessionId(session.id);setSessionView("blocks");}}>
+                        <span className="chapter-number">{i+1}</span>
+                        <span className="chapter-title"><strong><MathHtml text={session.title}/></strong><small>Séance {i+1} · position {session.position+1} · {capsules.filter(c=>c.session_id===session.id).length} bloc(s)</small></span>
+                        <span className={`status-pill ${session.is_available?"published":"draft"}`}><span/>{session.is_available?"Disponible":"Masquée"}</span>
+                      </button>
+                      <div className="row-actions">
+                        <button title="Ouvrir la séance" onClick={()=>{setOpenSessionId(session.id);setSessionView("blocks");}}><ChevronRight size={14}/></button>
+                        <button title={session.is_available?"Masquer aux élèves":"Publier pour les élèves"} disabled={busy} onClick={()=>void toggleSessionAvailability(session)}>{session.is_available?<EyeOff size={14}/>:<Eye size={14}/>}</button>
+                        <button title="Monter" disabled={busy||i===0} onClick={()=>void moveSession(session,-1)}><ArrowUp size={14}/></button>
+                        <button title="Descendre" disabled={busy||i===sessions.length-1} onClick={()=>void moveSession(session,1)}><ArrowDown size={14}/></button>
+                        <button title="Renommer" onClick={()=>editSession(session)}>✎</button>
+                        <button title="Supprimer" onClick={()=>void deleteSession(session)}><Trash2 size={14}/></button>
+                      </div>
+                    </div>)}
+                    {unassignedCount>0 && <div className="chapter-row session-row unassigned-row">
+                      <button className="chapter-select" onClick={()=>{setOpenSessionId(UNASSIGNED);setSessionView("blocks");}}>
+                        <span className="chapter-number">∅</span>
+                        <span className="chapter-title"><strong>Blocs non affectés</strong><small>{unassignedCount} bloc(s) sans séance — à affecter explicitement</small></span>
+                      </button>
+                      <div className="row-actions"><button title="Ouvrir" onClick={()=>{setOpenSessionId(UNASSIGNED);setSessionView("blocks");}}><ChevronRight size={14}/></button></div>
+                    </div>}
+                  </div>}
+                </>}
+
+                {sessionView==="blocks" && <>
+                  <div className="content-subhead"><h4>{scopeLabel} <span>{scopeCapsules.length}</span></h4><div className="panel-actions"><button className="secondary" onClick={()=>setSessionView("sessions")}><ArrowLeft size={14}/> Séances</button><button className="small-primary" disabled={busy} onClick={()=>void createCapsule()}><Plus size={15}/> Bloc</button></div></div>
+                  {openSessionId!==UNASSIGNED && !openSession ? <Empty text="Séance introuvable. Reviens à la liste des séances."/> : scopeCapsules.length===0 ? <Empty text={openSessionId===UNASSIGNED?"Plus aucun bloc non affecté.":"Cette séance ne contient aucun bloc. Ajoute-en un avec « Bloc »."}/> : <div className="item-list">
+                    {scopeCapsules.map((capsule,i)=><div key={capsule.id} className="chapter-row block-row">
+                      <button className="chapter-select" onClick={()=>{setPreviewId(capsule.id);setSessionView("preview");}}>
+                        <span className="chapter-number">{i+1}</span>
+                        <span className="chapter-title"><strong><MathHtml text={capsule.title}/></strong><small>Bloc {i+1} · {KIND_LABEL[capsule.kind]??capsule.kind}</small></span>
+                      </button>
+                      <select className="block-move" aria-label="Séance du bloc" value={capsule.session_id??""} disabled={busy||sessions.length===0} onChange={e=>void assignCapsule(capsule,e.target.value)}>
+                        <option value="">Non affecté</option>{sessions.map((s,k)=><option key={s.id} value={s.id}>{`Séance ${k+1}`}</option>)}
+                      </select>
+                      <div className="row-actions">
+                        <button title="Voir l’aperçu complet" onClick={()=>{setPreviewId(capsule.id);setSessionView("preview");}}><Eye size={14}/></button>
+                        <button title="Supprimer" disabled={busy} onClick={()=>void deleteCapsule(capsule)}><Trash2 size={14}/></button>
+                      </div>
+                    </div>)}
+                  </div>}
+                </>}
+
+                {sessionView==="preview" && (!previewCapsule ? <Empty text="Bloc introuvable. Reviens à la liste des blocs."/> : <div className="block-preview">
+                  <div className="content-subhead"><h4><MathHtml text={previewCapsule.title}/></h4><div className="panel-actions"><button className="secondary" onClick={()=>{setSessionView("blocks");setPreviewId("");}}><ArrowLeft size={14}/> Retour aux blocs</button><button className="primary" disabled={busy} onClick={()=>editCapsule(previewCapsule)}>Modifier le bloc</button></div></div>
+                  <div className="block-preview-meta"><span className="kind-pill">{KIND_LABEL[previewCapsule.kind]??previewCapsule.kind}</span><span>{previewCapsule.minutes} min</span><span>{previewCapsule.is_high_yield?"Prioritaire":"Bloc de leçon"}</span><span className="muted">Aperçu en lecture seule — rendu élève</span></div>
+                  <div className="preview-box block-preview-body" dangerouslySetInnerHTML={{ __html: renderPreview(previewCapsule.body) || "<span class=\"muted\">Aucun texte dans ce bloc.</span>" }} />
+                </div>)}
                 </>}
                 {lessonTab==="exercises" && <>
                   <div className="content-subhead"><small>QCM, flashcards et textes à compléter liés à cette leçon.</small><button className="small-primary" onClick={()=>void createCard()}><Plus size={15}/> Exercice</button></div>
